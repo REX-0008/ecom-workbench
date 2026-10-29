@@ -1,0 +1,557 @@
+/*
+ * Tailwind 入口：只编译组件里用到的类（布局/间距/尺寸/定位/伪状态/动画）。
+ *
+ * 接入方式照 `my-dsh-plugins/context-panel-write`（已验证在 dsh 里可用）。
+ * 四条与 stock Tailwind 不同的刻意偏差，都是为了与 dsh 宿主页共存：
+ *
+ * 1. 不引 preflight、不引默认主题——reset 会把 dsh 自己的外观改掉。
+ * 2. --spacing: 4px 而不是 0.25rem——我们的间距都是 px，锚到像素不受宿主字号影响。
+ * 3. 编译成不带 @layer 的普通 CSS：带 layer 的类会输给不带 layer 的宿主规则。
+ *    本表在 client/index.ts 里第一个 import，所以同优先级时后面的手写样式表仍然赢。
+ * 4. 通用类名安全：dsh 用 CSS Modules（类名带 hash）与 --ds-/--dsw- token，不会撞名。
+ *
+ * ⚠️ 文件结构有硬要求：`@theme` 与 `@source` 在前，普通 CSS 在中，
+ * `@tailwind utilities;` 必须在**最后一行**——它之后不能再有任何内容。
+ */
+
+@theme static {
+  --spacing: 4px;
+
+  /* ⚠️ 字体族必须在这里定义，否则 `font-mono` / `font-sans` 这两个类
+   * **Tailwind 根本不会发射**（它只发射有对应主题变量的工具类）。
+   *
+   * 这是「看着不像」的一大原因：FounderOS 的视觉标识就是**全站等宽字体**
+   * （它 CLAUDE.md 原话：Lettering: JetBrains Mono everywhere；
+   *   font-sans 与 font-mono 都指向 --font-mono），
+   * 而我抄过去的一堆 `font-mono` 类此前全被静默丢弃了。
+   *
+   * 值映射到 dsh 自己的字体栈（用户定的规则：外壳跟随 dsh，不自造字体）：
+   *   --dsw-font-family        = dsh 的无衬线栈（系统字体 + 中文回退）
+   *   --ds-font-family-code    = dsh 的等宽栈（含中文回退，避免掉到宋体）
+   *
+   * 注意：dsh 的等宽栈**故意不带裸 monospace 尾巴**（Windows 中文会掉宋体），
+   * 所以这里直接引用它的变量，不自己拼字体列表。 */
+  --font-sans: var(--dsw-font-family);
+  --font-mono: var(--ds-font-family-code, var(--dsw-font-family));
+
+  /* ⚠️ **断点必须显式定义**（2026-10-17 修的真 bug）：
+   *
+   * 我们**不引 tailwind 的默认主题**（第 1 条偏差：不引 preflight/默认主题，
+   * 免得 reset 改掉 dsh 自己的外观）。代价是**断点也没了** ——
+   * 而 Tailwind 的媒体变体（`lg:` / `2xl:` / `sm:` …）依赖 `--breakpoint-*` 变量：
+   * 变量不存在时它**静默不发射那条规则**，构建成功、类型检查成功、测试也绿
+   * （因为测试查的是源码里写了什么），只有真机上「宽屏那档样式不见了」。
+   *
+   * 实测（2026-10-17）：加之前产物里 `lg:grid-cols-2` 出现 **0** 次、
+   * `@media` 共 2 条（都是 prefers-reduced-motion）；加上这 5 行后立刻出现
+   * `@media (width >= 64rem)`，`@media` 变成 11 条。
+   *
+   * 取值就是 Tailwind v4 的默认断点（40/48/64/80/96rem = 640/768/1024/1280/1536px），
+   * 照抄默认值，不自创。
+   *
+   * ⚠️ 新增任何 `sm:` / `md:` / `lg:` / `xl:` / `2xl:` 变体前，
+   * 先确认它对应的变量在这张表里 —— 漏了就是又一条静默失效。
+   * `tests/css-refs.mjs` 已加断言盯着这一条（源码用了断点类却查不到 @media 就报错）。 */
+  --breakpoint-sm: 40rem;
+  --breakpoint-md: 48rem;
+  --breakpoint-lg: 64rem;
+  --breakpoint-xl: 80rem;
+  --breakpoint-2xl: 96rem;
+
+  /* 瀑布流的**列宽**（用户 m02540：「宽度固定根据页面宽度决定放几个」）。
+   *
+   * Tailwind 的 `--columns-*` 命名空间 → 类名 `columns-ewb-card`。
+   * 写死 320px 的理由：它要落在工作台右栏里（右栏可拖宽，默认 40% 视口）——
+   * 320 是「卡片里那行按钮 + 时间胶囊还排得下、又不会宽到一行只见一张」的档位。
+   * 真要调只改这一处。 */
+  --columns-ewb-card: 320px;
+
+  /* 色板子集（取自本仓 pin 的 tailwindcss 版本）。
+   * static 是关键：手写样式与 TS 里的颜色字段要通过普通 var() 取这些值，
+   * 而 Tailwind 默认只发射被类用到的变量。 */
+  --color-red-500: oklch(63.7% 0.237 25.331);
+  --color-amber-500: oklch(76.9% 0.188 70.08);
+  --color-green-500: oklch(72.3% 0.219 149.579);
+  --color-teal-500: oklch(70.4% 0.14 182.503);
+  --color-blue-500: oklch(62.3% 0.214 259.815);
+  --color-violet-500: oklch(60.6% 0.25 292.717);
+  --color-pink-500: oklch(65.6% 0.241 354.308);
+  --color-slate-400: oklch(70.4% 0.04 256.788);
+  --color-neutral-500: oklch(55.6% 0 none);
+
+  /* FounderOS 的强调三件套（accent / accent-soft / accent-line）——
+   * 它的选中态就是这三个：accent-line 描边 + accent-soft 填充 + accent 文字。
+   * 映射到 dsh 的品牌色（用户定的规则：主题层跟随 dsh），用 color-mix 派生，亮暗自动跟随。 */
+  --ewb-accent: var(--dsw-alias-brand-primary);
+  --ewb-accent-soft: color-mix(in srgb, var(--dsw-alias-brand-primary) 8%, transparent);
+  --ewb-accent-line: color-mix(in srgb, var(--dsw-alias-brand-primary) 25%, transparent);
+
+  /* ══ 深度（照 `refactoring-ui` §6.1）══════════════════════════════════
+   *
+   * 整章都从**一条物理规则**推出来（§6.1.1）：**光从上方来**。
+   *
+   *   - **浮起**：顶边亮、底边暗、**下方**投影（Y 偏移为正）
+   *   - **内凹**：顶边暗、底边亮、顶部投影（负 Y 偏移）
+   *
+   * 两条推论：
+   *   1. **投影的 Y 偏移必须为正**——零偏移或负偏移看起来就是错的（§6.1.1「Fails as」）
+   *   2. **不能用半透明白当高光**——"overlaying white sucks the saturation out"，
+   *      要手挑一个比面色更亮的实色（§6.1.2 第 2 条）
+   *
+   * ⚠️ 与我们**已有的发光**区分：
+   *   画布里那批 `0 0 Npx`（零偏移）是**状态发光**（运行中/成功/失败），
+   *   它表达「现在怎么样了」而不是「浮在表面」，是**有意保留**的，不在此规则管辖内。
+   *   此节只管**浮层与控件**的深度。
+   *
+   * 浮层阶（3 级，照 §6.2.1 的「从一组里取」而非每个组件各写一个）：
+   *   `--shadow-2` 浮起（下拉、弹出层）
+   *   `--shadow-3` 最高（对话框、抽屉）
+   * （原设计的「贴面级 `--shadow-1`」已删：0 处使用，要用时再加。）
+   * 模糊半径按 §6.1.2「keep the blur tight」——浮层可以大，贴面必须小。
+   */
+  --shadow-2: 0 6px 20px rgba(0, 0, 0, 0.4);
+  --shadow-3: 0 18px 46px rgba(0, 0, 0, 0.55);
+
+  /* ══ 层级（三层，照 `refactoring-ui` §2.1 / §2.2.a / §2.2.b）═════════
+   *
+   * §2.1 的核心测试：**说不出这一屏最重要的那一个元素，就等于没有层级**。
+   *
+   * 我们的三层（每个界面都按这个分）：
+   *
+   *   T1 **当前正在做的事**——页面标题、当前 tab、列表行的名字、节点名
+   *   T2 支撑信息——元信息数值、分节标签、按钮文字
+   *   T3 只需存在——时间戳、目录路径、计数、帮助文字
+   *
+   * 三条硬约束（都是**不变量**，不是建议）：
+   *   - **字重只用两种**（§2.2.b）：`600` 表强调、`400` 表其余。
+   *     原来我们用了 medium/semibold/bold 三种，且 tab 与页面标题**同为 bold** → 层级不分。
+   *   - **字号不单独扛层级**（§2.2）：先动字重与颜色，最后才动字号。
+   *   - **文字颜色最多三种**（§2.2.a）：`primary` / `secondary` / `tertiary`，按层分配后不再变。
+   *     （我们已是三种，合格；此条写下来防止将来加第四种。）
+   *
+   * 映射到 Tailwind：只有 `font-semibold`(600) 与不写(400) 两种，
+   * 禁用 `font-medium` / `font-bold` / `font-light`。
+   */
+
+
+  /* ══ 我们的语义层（全部映射 dsh，不另造色值）══════════════════════════
+   *
+   * **为什么要这一层**（用户 2026-10-08 提出）：
+   * 「我们很多地方直接用 dsh 的 token 值，即使是用他的，也应该整理到我们的规范中，
+   *   不然后期可能不知道引用。」
+   *
+   * 三个理由：
+   *  1. **可查**——想知道「我们的线用什么色」时，看这里就够，不用去翻 dsh 源码
+   *  2. **可换**——将来换主题或换宿主，只改这一层
+   *  3. **防写错**——dsh 的真名是 `--dsw-alias-state-*` 而不是 `status-*`；
+   *     我们曾写错 40 处（靠 fallback 兜住才没露馅）。有了中间层就能一次性校验
+   *
+   * 命名规则：我们的用 `--ewb-*`，值与角色一一对应。
+   * 用法：`var(--ewb-line)`，不直接写 `var(--dsw-alias-border-l2)`。
+   */
+
+  /* 文字（3 档，§2.2.a 上限 3 种） */
+  --ewb-ink: var(--dsw-alias-label-primary, #e6e8ec);
+  --ewb-dim: var(--dsw-alias-label-secondary, #9aa4b2);
+  --ewb-mute: var(--dsw-alias-label-tertiary, #6b7280);
+  --ewb-faint: var(--dsw-alias-label-caption, #545a63);
+
+  /* 面（底 → 浮层，逐级抬升） */
+  --ewb-bg: var(--dsw-alias-bg-base, #151517);
+  --ewb-face: var(--dsw-alias-bg-layer-1, #1c1c1e);
+  /* ⚠️ 为什么 face-2 用 `bg-overlay` 而不是 `bg-layer-2`：
+   * dsh 在**亮色**下把 bg-base / layer-1 / layer-2 / layer-3 **全设成纯白**
+   * （它靠边框分层，不靠底色）。所以「卡片要浮起来」这个诉求在亮色下只有
+   * `bg-overlay`（亮色 #e9ecf2 浅灰 / 暗色 #61666b）能满足。
+   * 用户反馈「条目没有底色、成一坨」即由此而来。 */
+  --ewb-face-2: var(--dsw-alias-bg-overlay, #2a2a2e);
+  --ewb-face-3: var(--dsw-alias-bg-layer-3);
+  --ewb-overlay: var(--dsw-alias-bg-overlay);
+
+  /* 线（2 档：细线 / 强调线） */
+  --ewb-line: var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
+  --ewb-line-strong: var(--dsw-alias-border-l4);
+
+  /* 交互态 */
+  --ewb-hover: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.08));
+  --ewb-active: var(--dsw-alias-interactive-bg-active);
+
+  /* 语义状态（成功 / 警告 / 失败）。
+   * ⚠️ dsh 的真名是 `state-*`，不是 `status-*`——我们曾写错 40 处。 */
+  --ewb-ok: var(--dsw-alias-state-success-primary);
+  --ewb-warn: var(--dsw-alias-state-warn-primary);
+  --ewb-err: var(--dsw-alias-state-error-primary);
+
+  /* 字体栈（引用 dsh，不自己拼——它的等宽栈刻意不带裸 monospace，否则 Windows 中文掉宋体） */
+  --ewb-sans: var(--dsw-font-family);
+  --ewb-mono: var(--ds-font-family-code, var(--dsw-font-family));
+
+  /* ══ 字号阶（6 档，按**语义角色**命名，值全部取自 dsh）══════════════
+   *
+   * 命名用角色而非尺寸（`-label` 而非 `-12`）：尺寸会变，角色不会。
+   *
+   * | token | 值 | 角色 | 典型用处 |
+   * | --- | --- | --- | --- |
+   * | `-title`   | 20px | 页面标题 | 每屏第一眼（T1） |
+   * | `-heading` | 16px | 段标题 / 数据大字 | 指标数值、卡片标题 |
+   * | `-body`    | 14px | 正文 | 行标题、品牌名、空状态文案 |
+   * | `-meta`    | 13px | 弱正文 | tab、按钮、次级说明 |
+   * | `-label`   | 12px | 标签 | 分节标签、徽标 |
+   * | `-caption` | 11px | 极小标 | 时间戳、分组标题、计数 |
+   *
+   * 定阶依据：
+   *  1. 值**全部取自 dsh 已有的档**（`--dsw-font-*-N-font-size`），不另造
+   *  2. 角色划分照 **FounderOS 的实际用法**（它规矩里写死的三档：页面标题 25px /
+   *     眉标 9.5px / 分节标签 10px；高频正文 13.5px、数值 17px）
+   *  3. `refactoring-ui` §4.1.1d：「取已有的那一套，不另造」
+   *
+   * ⚠️ 「相邻档不得近于 25%」在字号上**做不到**：从 11 到 20 分 6 档，平均每档 12.7%。
+   * 原文用的是 "**about** 25%"，属倾向而非硬门槛；`refactoring-ui` 自己的推荐阶也不达标
+   * （12→14 是 16.7%）。此处按**角色可分性**定档（人能一眼分辨层级），而非按数学比例。
+   *
+   * ⚠️ Tailwind 只发射**被用到的** token——新增档位后若无人使用，它不会出现在产物里。
+   * 这是刻意的（省体积）；排查「token 没生效」时先确认它被用到了。
+   *
+   * 用命名 token 而非 `text-[13.5px]`：任意值是规则明确禁止的（"no `text-[15px]`"）。
+   */
+  /* ⚠️ 每个都带兜底值。为什么：dsh 的 `--dsw-font-*` 由**宿主插件**在运行时注入，
+   * 若注入失败或晚于我们的样式，`var()` 取不到 → 字号**回退到浏览器默认 16px**
+   * （实测症状：节点库文字突然变得很大、且各档一样大）。
+   * 兜底值与 dsh 的定义一致（13px / 12px / 11px 等），所以退化了也还是对的。 */
+  --text-ewb-title: var(--dsw-font-l-20-font-size, 20px);
+  --text-ewb-heading: var(--dsw-font-base-16-font-size, 16px);
+  --text-ewb-body: var(--dsw-font-s-14-font-size, 14px);
+  --text-ewb-meta: var(--dsw-font-xs-13-font-size, 13px);
+  --text-ewb-label: var(--dsw-font-xxs-12-font-size, 12px);
+  --text-ewb-caption: var(--dsw-font-xxxs-11-font-size, 11px);
+
+  /* 圆角档（照 FounderOS 的 tailwind.config：ctl=6px/panel=10px/tile=12px，
+   * 但它的 premium pass 把 ctl 调到了 6px、sm-t 5px；这里按它实际用的值定）。 */
+  /* 圆角**按层级分两级**（§1.4.3 要求「按层级分」，走查表的 P1 是「圆角不一致」）：
+   *   `-ctl`  控件级（按钮、输入框、条目）
+   *   `-card` 容器级（卡片、面板、指标格）
+   * 加一个 `rounded-full` 用于胶囊。原来的 5px / 8px / 12px 三档并入这两级。 */
+  --radius-ctl: 6px;
+  --radius-card: 10px;
+
+  /* 动效（照 FounderOS 的入场） */
+  --animate-ewb-rise: ewb-rise 0.45s cubic-bezier(0.4, 0, 0.2, 1) calc(var(--ewb-i, 0) * 45ms) backwards;
+  --animate-ewb-fade: ewb-fade 0.3s cubic-bezier(0.4, 0, 0.2, 1) calc(var(--ewb-i, 0) * 30ms) backwards;
+  @keyframes ewb-rise { from { opacity: 0; transform: translateY(8px); } }
+  @keyframes ewb-fade { from { opacity: 0; } }
+}
+
+/* 组件源码——唯一会出现类列表的地方。 */
+@source "../";
+
+/* ══ 交互层：照搬 FounderOS 的 .pressable ══════════════════════════════
+ *
+ * 为什么单独一份：它的「手感」全在这里，而这不是 Tailwind 类能表达的——
+ * 是那套 3D 透视 + 时长曲线 + 悬停位移 + 按下反馈。
+ * 此前我只对齐了类名、没搬这一层，所以看着像但手感完全不同。
+ *
+ * 来源：FounderOS-DEMO/app/globals.css:413-483。
+ * 变量映射：它的 --text / --bg / --surface-2 与时长曲线 → dsh 对应值。
+ */
+
+.pressable {
+  /* 时长与曲线（照 FounderOS 的取值）。这两个变量只服务 .pressable 自己，
+   * 所以刻意**不放进 @theme**（放进去会变成全局 token，且 Tailwind 会因未使用而丢弃）。 */
+  --ewb-dur-lens: 630ms;
+  --ewb-dur-press: 200ms;
+  --ewb-ease-lens: cubic-bezier(0.22, 0.61, 0.36, 1);
+  position: relative;
+  /* 圆角不参与动画（照它的注释） */
+  transition:
+    transform var(--ewb-dur-lens) var(--ewb-ease-lens),
+    background-color var(--ewb-dur-lens) var(--ewb-ease-lens),
+    border-color var(--ewb-dur-lens) var(--ewb-ease-lens),
+    color var(--ewb-dur-lens) var(--ewb-ease-lens),
+    box-shadow var(--ewb-dur-lens) var(--ewb-ease-lens),
+    opacity var(--ewb-dur-lens) var(--ewb-ease-lens);
+}
+
+/* 悬停：3D 透视 + 抬起 1px + 放大 1.05。
+ * --ewb-lx/ly/rx/ry 是它光标跟随的槽位；我们不跟随光标，留默认 0。 */
+.pressable:hover {
+  z-index: 3;
+  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.6);
+  transform: perspective(700px) translate(var(--ewb-lx, 0px), var(--ewb-ly, 0px))
+    rotateX(var(--ewb-rx, 0deg)) rotateY(var(--ewb-ry, 0deg)) translateY(-1px) scale(1.05);
+}
+
+/* data-lens="r" = 它的保守版（侧栏条目用的就是这个：位移 + 只放大 1.02）。 */
+.pressable[data-lens='r']:hover {
+  transform: perspective(700px) translate(var(--ewb-lx, 0px), var(--ewb-ly, 0px))
+    rotateX(var(--ewb-rx, 0deg)) rotateY(var(--ewb-ry, 0deg)) translateY(-1px) scale(1.02);
+}
+
+/* is-dark：深色面上的条目（侧栏用）——悬停时给填充与描边。
+ * 填充色用 bg-layer-2：FounderOS 的 --surface-2 注释就是「hover fill (nav rows, list rows)」。 */
+.pressable.is-dark:hover {
+  color: var(--dsw-alias-label-primary);
+  background-color: var(--dsw-alias-bg-layer-2);
+  border-color: color-mix(in oklab, var(--dsw-alias-label-primary) 38%, transparent);
+}
+
+/* 按下：下沉 1px + 缩到 0.97 + 一圈环。 */
+.pressable:active {
+  transition-duration: var(--ewb-dur-press);
+  transform: translateY(1px) scale(0.97);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--dsw-alias-label-primary) 22%, transparent);
+  border-color: var(--dsw-alias-label-primary);
+}
+.pressable[data-lens='r']:active { transform: scale(0.995); }
+
+/* 键盘焦点环。 */
+.pressable:focus-visible {
+  outline: none;
+  border-color: var(--dsw-alias-label-primary);
+  box-shadow: 0 0 0 3px color-mix(in oklab, var(--dsw-alias-label-primary) 8%, transparent);
+}
+
+/* ══ 盒模型：**必须先补 border-box** ═══════════════════════════════════
+ *
+ * 为什么需要（用户 m03965 报的「卡片右边距没有正常显示」，2026-10-18 定位）：
+ *
+ *   我们没引 preflight（见上），代价里除了按钮灰底，还有**盒模型** ——
+ *   浏览器默认 `box-sizing: content-box`（宽 = 内容宽，内边距**加在**外面）。
+ *
+ *   而我们的写法是照 Tailwind 的假设写的：`w-full` + `px-5`。
+ *   在 border-box 下那是「宽 100%，内边距算在里边」；在 content-box 下
+ *   变成「宽 100% **再加**左右各 20px」→ 整个内层比卡片宽 40px。
+ *
+ *   卡片上有 `overflow-hidden` 兜底，多出来的 40px 被**裁掉**，表现是：
+ *   左边 20px 内边距看得见、**右边 20px 没了，文字贴着右边框** ——
+ *   用户看到的「右边距没显示」就是这个。
+ *
+ *   实测（真 Chromium + 产物真 CSS，2026-10-18）：不加这条规则时
+ *   文字块右边界超框 40px；加上后内边距两侧都是 20px。
+ *
+ * ⚠️ 这条**不能只在卡片上加**：同一病因还有 4 处（收藏面板的文本框、
+ *   左侧导航的几个 w-full + px-2.5 按钮）—— 凡是「w-full/grid 项 + 内边距」
+ *   都会溢出。只在卡片上打补丁等于让下一处继续踩。
+ *
+ * ⚠️ 用 `*` 会改掉我们所有元素的盒模型（.node 的 300px 从「+2px 边框」变成
+ *   「含边框」）。这正是 Tailwind preflight 的默认行为，我们的布局本来就是
+ *   按那个假设写的，所以是**归位**而不是新引入的改动。
+ *   唯一要盯的是显式写死 width 的元素 —— 测试里 `loop-box` / `elk-layout` /
+ *   `height-chain` 覆盖了它们。
+ *
+ * ⚠️ 仍然包在 `:where()` 里（特指度 0）：任何一处手写 `box-sizing` 想反悔都能盖过它。
+ *   `.loopBox` 与 `.loopSettings` 早就各自写了 `box-sizing: border-box`，
+ *   说明这条本来就该是全局默认。
+ */
+:where([data-ewb-column], [data-ewb-drawer]),
+:where([data-ewb-column], [data-ewb-drawer]) *,
+:where([data-ewb-column], [data-ewb-drawer]) *::before,
+:where([data-ewb-column], [data-ewb-drawer]) *::after {
+  box-sizing: border-box;
+}
+
+/* ══ 最小重置：杀掉「浏览器给控件的默认外观」══════════════════════════
+ *
+ * 为什么需要：我们没有引 Tailwind 的 preflight（它会 re-skin dsh 宿主页），
+ * 于是 `<button>` 保留了浏览器的**默认灰底**——截图里那些灰块就是它。
+ * FounderOS 那边靠 preflight 把按钮底重置成透明，所以未选中项「无底色」。
+ *
+ * 两条关键设计：
+ *
+ * 1. **用 `:where()` 包住整个选择器 → 特指度为 0**。
+ *    这样它能杀掉浏览器默认样式，却**输给任何一条我们的类**（Tailwind 工具类、
+ *    手写 `.pressable` 等）。若不用 `:where()`，`[data-ewb-column] button`（0,1,1）
+ *    会**盖过** `bg-[...]` 这样的工具类（0,1,0），把我们的配色全废掉。
+ *
+ * 2. **只作用于我们自己的容器**（`[data-ewb-column]` 与 `[data-ewb-drawer]`），
+ *    绝不进 dsh 的其它界面。
+ */
+:where([data-ewb-column], [data-ewb-drawer]) :where(button, input, select, textarea) {
+  background-color: transparent;
+  background-image: none;
+  border: 0 solid;
+  color: inherit;
+  font: inherit;
+  margin: 0;
+  padding: 0;
+}
+/* 按钮与输入框还有几处 UA 默认：圆角、外观、聚焦描边 */
+:where([data-ewb-column], [data-ewb-drawer]) :where(button) {
+  appearance: none;
+  border-radius: 0;
+  cursor: pointer;
+}
+:where([data-ewb-column], [data-ewb-drawer]) :where(input, textarea, select) {
+  appearance: none;
+  outline: none;
+}
+
+/* ══ 页面眉标（照 FounderOS 的 .page-eyebrow）══════════════════════════
+ * 它的做法是**用 ::before 加 `//` 前缀**（不是写进文字里），
+ * 所以换语言/换文案时那个符号不用重复维护。
+ * 来源：FounderOS-DEMO/app/globals.css:793-798。
+ */
+.page-eyebrow::before {
+  content: '//';
+  font-weight: 700;
+}
+
+/* 入场动画（照它的 .rise）：元素按 --ewb-i 阶梯依次升起。 */
+.animate-ewb-rise { animation: var(--animate-ewb-rise); }
+
+/* ══ 状态点（照 FounderOS 的 .dot）════════════════════════════════════
+ * 它的取值：6×6 圆点；ok 用绿、pulse 是**阶梯式闪烁**（steps，不是渐隐）；
+ * 另有 warn / err / off 三态。颜色映射到 dsh 的语义色。
+ * 来源：FounderOS-DEMO/app/globals.css:757-791。
+ */
+.dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  position: relative;
+  display: inline-block;
+  background: var(--dsw-alias-label-tertiary);
+}
+.dot.ok { background: var(--dsw-static-green-500); }
+.dot.ok.pulse { animation: ewb-led-blink 2.6s steps(1) infinite; }
+.dot.warn { background: var(--dsw-static-amber-500); }
+.dot.err { background: var(--dsw-static-red-500); }
+.dot.off { background: transparent; border: 1px solid var(--dsw-alias-label-tertiary); }
+@keyframes ewb-led-blink {
+  0%, 70%, 100% { opacity: 1; }
+  85% { opacity: 0.25; }
+}
+
+/* 减弱动效偏好：关掉位移与缩放。 */
+@media (prefers-reduced-motion: reduce) {
+  .pressable:hover, .pressable:active { transform: none; }
+  .dot.ok.pulse { animation: none; }
+}
+
+
+/* ══ 重定义到 body（关键修复，2026-10-10）════════════════════════════
+ *
+ * **为什么必须这样**：CSS 自定义属性只能**向下继承**（父 → 子）。
+ *
+ * dsh 把它的全部 `--dsw-*` 定义在 **`body`** 上（源码 `design-platform.css`
+ * 与 `gradient-shadow-text.css` 的顶层选择器都是 `body { }`）。
+ * 而 Tailwind 的 `@theme` 固定生成 `:root, :host`（= `<html>`，body 的**父级**）。
+ *
+ * 于是 `:root` 里的 `var(--dsw-alias-border-l2)` **取不到**——
+ * 那一刻还没走到 body，父级看不到子级的变量。
+ *
+ * 症状：字号回退浏览器默认 16px、边框宽度变 0、多个样式静默失效。
+ *
+ * 修法：把同一批 token **在 body 上再定义一次**——这里能看到 dsh 的值。
+ * 这不是重复定义：`:root` 那份给宿主外的场景兜底，`body` 这份才是实际生效的。
+ */
+body {
+  --ewb-ink: var(--dsw-alias-label-primary, #e6e8ec);
+  --ewb-dim: var(--dsw-alias-label-secondary, #9aa4b2);
+  --ewb-mute: var(--dsw-alias-label-tertiary, #6b7280);
+  --ewb-faint: var(--dsw-alias-label-caption, #545a63);
+  --ewb-bg: var(--dsw-alias-bg-base, #151517);
+  --ewb-face: var(--dsw-alias-bg-layer-1, #1c1c1e);
+  --ewb-face-2: var(--dsw-alias-bg-overlay, #2a2a2e);
+  --ewb-face-3: var(--dsw-alias-bg-layer-3, #303036);
+  --ewb-overlay: var(--dsw-alias-bg-overlay, #2a2a2e);
+  --ewb-line: var(--dsw-alias-border-l2, rgba(128, 128, 128, 0.25));
+  --ewb-line-strong: var(--dsw-alias-border-l4, rgba(128, 128, 128, 0.35));
+  --ewb-hover: var(--dsw-alias-interactive-bg-hover, rgba(128, 128, 128, 0.08));
+  --ewb-active: var(--dsw-alias-interactive-bg-active, rgba(128, 128, 128, 0.14));
+  --ewb-ok: var(--dsw-alias-state-success-primary, #2fd36f);
+  --ewb-warn: var(--dsw-alias-state-warn-primary, #ffb000);
+  --ewb-err: var(--dsw-alias-state-error-primary, #ff2d3f);
+  --ewb-accent: var(--dsw-alias-brand-primary, #4a9eff);
+  --ewb-accent-soft: color-mix(in srgb, var(--dsw-alias-brand-primary, #4a9eff) 8%, transparent);
+  --ewb-accent-line: color-mix(in srgb, var(--dsw-alias-brand-primary, #4a9eff) 25%, transparent);
+  --ewb-sans: var(--dsw-font-family, -apple-system, 'Segoe UI', 'PingFang SC', sans-serif);
+  --ewb-mono: var(--ds-font-family-code, Consolas, monospace);
+
+  /* 字号 6 档 */
+  --text-ewb-title: var(--dsw-font-l-20-font-size, 20px);
+  --text-ewb-heading: var(--dsw-font-base-16-font-size, 16px);
+  --text-ewb-body: var(--dsw-font-s-14-font-size, 14px);
+  --text-ewb-meta: var(--dsw-font-xs-13-font-size, 13px);
+  --text-ewb-label: var(--dsw-font-xxs-12-font-size, 12px);
+  --text-ewb-caption: var(--dsw-font-xxxs-11-font-size, 11px);
+}
+
+/* ══ 暗色覆盖（照 dsh 自己的机制：`body` + `body[data-ds-dark-theme]` 两套）══
+ *
+ * **为什么必须有这一段**（2026-11-10，用户反馈「暗色下底色太突兀」）：
+ *
+ * dsh 在**亮色**下把 `bg-base` / `layer-1` / `layer-2` / `layer-3` **全设成纯白**
+ * （它靠边框分层，不靠底色）—— 所以亮色下唯一能「浮起来」的面是 `bg-overlay`（浅灰）。
+ * 而在**暗色**下 `bg-overlay` 是 `rgb(97,102,107)` **中灰**，用在工具条/节点上非常突兀。
+ *
+ * 也就是说「浮起的面」这一个语义，在亮暗两套下需要**不同**的 dsh token。
+ * 用一个 token 通吃必然坏掉一头 —— 之前把 face-2 指到 overlay 修好了亮色、弄坏了暗色。
+ *
+ * 解法与 dsh 一致：**按主题给不同的值**。暗色下改用 dsh 的 `layer-2`（rgb(44,44,46)），
+ * 它是「比画布底（21）浅两档」的干净面，符合 dsh 自己的层次语言。
+ */
+body[data-ds-dark-theme] {
+  /* 浮起的面：暗色用 layer-2（不是 overlay）。 */
+  --ewb-raise: var(--dsw-alias-bg-layer-2, #2c2c2e);
+  /* 次级面（工具条这类横条）：比画布底浅一档就够。 */
+  --ewb-bar: var(--dsw-alias-bg-layer-1, #232324);
+  /* 列表条目：亮色靠边框、暗色要能看出「每一条」。 */
+  --ewb-item: var(--dsw-alias-bg-layer-1, #232324);
+  --ewb-item-hover: var(--dsw-alias-bg-layer-2, #2c2c2e);
+}
+
+/* 亮色段（默认值，在 body 上）：亮色下 layer-1/2/3 都是白，只有 overlay 有区分度。 */
+body {
+  --ewb-raise: var(--dsw-alias-bg-overlay, #e9ecf2);
+  --ewb-bar: var(--dsw-alias-bg-base, #ffffff);
+  --ewb-item: var(--dsw-alias-bg-base, #ffffff);
+  --ewb-item-hover: var(--dsw-alias-bg-overlay, #e9ecf2);
+}
+
+/* ══ 工作台「面」的层级（2026-10-17，修「背景透明滑块看不见效果」）══════
+ *
+ * ## 那条 bug 的真因（两层，缺一不可）
+ *
+ * 用户 m02340：「画布背景改透明没改」。查实**不是没刷新**，是拖了真的看不出：
+ *
+ *   ① **画布底与它下面那层同色**：画布底取 `--v1-bg` = `bg-base`，
+ *      而它正下方的**右列背景**（`EcomWorkbench.module.css` 的 `.column`）
+ *      也取 `bg-base` —— **同一个令牌 = 同一个颜色**。
+ *      把上面那层调成半透明，透出来还是同一个颜色，眼睛不可能分辨。
+ *   ② **React Flow 自己还刷了一层**：它的根元素带 `colorMode` 类，
+ *      深色下 `--xy-background-color-default: #141414` 是**不透明**的，
+ *      把外层画的半透明底整个盖住。
+ *
+ * ## 修法：分三级，且**面的层级由内向外**（这与 §6.1「光从上方来」一致）
+ *
+ * ```
+ *   右列底  ← --ewb-canvas-underglow  （比画布底**深**一档，透出来能看见差别）
+ *     └ 画布底 ← --ewb-canvas-bg     （浅一点，滑块按百分比混向透明）
+ *         └ 节点/面板 ← --ewb-raise   （再浅一档 = 浮起，原有行为不变）
+ * ```
+ *
+ * 逐条说明为什么这么取：
+ *   · **用户 m00861 的原话**是「有的 UI 是透明的，**应用背景**，这时候整个板块
+ *     只有画布是天色、其他都有透明度」—— 也就是要「画布透出去能看见**底下有别的东西**」。
+ *     所以底下那层必须**与画布底不同色**，否则这条需求在视觉上无法成立。
+ *   · 用 `bg-module-platform`（亮 `#f5f6f7` / 暗 `#353638`）而不是写死值：
+ *     它是 dsh 自己的「模块平台底」语义层，**亮暗两套都自动跟随主题**，
+ *     且比 `bg-base` 稳定地差一档（亮侧浅一档、暗侧浅两档）。
+ *
+ * ⚠️ **这两个令牌只给「画布」与「它下面那层」用，不要顺手用到别处** ——
+ * 一旦有第二个地方用，层级就又乱了。
+ *
+ * ⚠️ 与「节点/面板」用的 `--ewb-raise` 是**两个不同的通道**：
+ * raise 管「浮起来的面」（要有边界感），这里管「底与底的层次」（要能看出深浅）。
+ * 之前把它们合成一个 `bg-base`，正是这个 bug 的根。 */
+body {
+  --ewb-canvas-underglow: var(--dsw-alias-bg-module-platform, #f5f6f7);
+  --ewb-canvas-base: var(--dsw-alias-bg-base, #ffffff);
+}
+body[data-ds-dark-theme] {
+  --ewb-canvas-underglow: var(--dsw-alias-bg-module-platform, #353638);
+  --ewb-canvas-base: var(--dsw-alias-bg-base, #151517);
+}
+/* ⚠️ 必须最后一行——它之后不能再有内容。 */
+@tailwind utilities;

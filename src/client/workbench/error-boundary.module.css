@@ -1,0 +1,116 @@
+/** 错误边界的样子。
+ *
+ * 与工作台其他地方同一套 token（`--dsw-alias-*`），只剩这一块还活着时也要好看 ——
+ * 用户是在**界面坏了**的时候看到它的，看不懂就更慌。
+ */
+.wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 16px;
+  padding: 16px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 35%, transparent);
+  border-radius: var(--rd-card, 10px);
+  background: var(--dsw-alias-bg-base);
+  /* ⚠️ 不能 overflow:hidden（本项目硬教训：flex 子项 overflow≠visible 时
+   * 自动最小尺寸算 0，会被压到 0 高且不出滚动条）。要圆角就只设 border-radius。 */
+}
+
+.head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex: 0 0 auto;
+}
+
+.mark {
+  color: var(--dsw-alias-state-error-primary);
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-13, 13px);
+  line-height: 1;
+}
+
+.title {
+  color: var(--dsw-alias-label-primary);
+  font-size: var(--text-ewb-16, 16px);
+  font-weight: 600;
+}
+
+.body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  flex: 0 0 auto;
+  /* 内容可能很长（组件栈能到几十行）—— 这一层可滚。 */
+  max-height: 60vh;
+  overflow-y: auto;
+  min-height: 0;
+}
+
+.msg {
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-13, 13px);
+  line-height: 1.55;
+  color: var(--dsw-alias-state-error-primary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.details {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.summary {
+  cursor: pointer;
+  font-size: var(--text-ewb-11, 12px);
+  color: var(--dsw-alias-label-tertiary);
+  letter-spacing: 0.06em;
+}
+
+.stack {
+  margin: 0;
+  padding: 8px;
+  max-height: 34vh;
+  overflow: auto;
+  border-radius: var(--rd-ctl, 6px);
+  background: var(--dsw-alias-interactive-bg-hover);
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-11, 12px);
+  line-height: 1.5;
+  color: var(--dsw-alias-label-secondary);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.hint {
+  font-size: var(--text-ewb-11, 12px);
+  color: var(--dsw-alias-label-tertiary);
+  line-height: 1.5;
+}
+
+.foot {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  padding-top: 4px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.btn {
+  padding: 4px 12px;
+  border-radius: var(--rd-full, 999px);
+  border: 1px solid var(--dsw-alias-border-l2);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: var(--text-ewb-11, 12px);
+  cursor: pointer;
+}
+
+.btn:hover {
+  border-color: var(--dsw-alias-label-tertiary);
+  background: var(--dsw-alias-interactive-bg-hover);
+}

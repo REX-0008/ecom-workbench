@@ -1,0 +1,616 @@
+/* 画布本体 —— 从 workflow-canvas.module.css 拆出。
+ *
+ * ⚠️ **`.canvas` 这条规则必须留在本文件**（2026-11-10 修的真 bug）：
+ * 代码里写的是 `css_workflow_canvas.canvas`（引用本文件）。
+ * 拆 CSS 时它被误放进 `canvas-tokens.module.css`，于是本文件只剩
+ * `.canvas :global(...)` 这类后代选择器、**没有 `.canvas` 本身** →
+ * 真机上那个 div 完全没有样式 → 高度由内容决定，而内容全是绝对定位 →
+ * **容器高度 = 0** → React Flow 报 **错误 004**（parent container needs width/height）。
+ *
+ * 教训：**规则要跟着引用它的那个 class 走**，不能按「它属于哪个主题」拆。
+ * 含：工具条、连线发光、颜色图例、提示条、对齐辅助线、设置抽屉。
+ * 注意：令牌在 canvas-tokens.module.css，本文件 @import 它。
+ */
+
+
+/* 画布主容器：撑满 `.bodyRow` 里除节点库之外的剩余宽度。
+ * ⚠️ `flex: 1 1 auto` + `min-height: 0` 是 React Flow 能量到尺寸的前提 ——
+ * 它内部用 `height: 100%`（wrapperStyle），需要父级有**可解析的高度**。 */
+/* ⚠️ **`min-height: 0` 与这条 background 都不能删** —— 见文件头的「错误 004」记载。 */
+.canvas {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* 画布底：**可按设置变透明**（用户 m00861：「有的 UI 是透明的，应用背景，
+   * 这时候整个板块只有画布是天色、其他都有透明度」）。
+   *
+   * 想看出这个滑块的效果，底下那层必须与画布底**有色差** ——
+   * 见 `EcomWorkbench.module.css` 的 `.column` 与 `styles/tailwind.css`
+   * 的「工作台『面』的层级」（2026-10-17 修的真 bug）。
+   *
+   * 实现：底色取自 dsh 语义层（跟随亮暗），**不透明度走变量** ——
+   * 变量由画布容器按设置下发（见 `WorkflowCanvas` 的 `--ewb-canvas-bg`）。
+   * `--ewb-canvas-bg` 的兜底值是「不透明」= 老行为；没设过偏好时就是这个。
+   *
+   * ⚠️ 用 `color-mix` 而不是给元素加 `opacity`：后者作用于**整棵子树**，
+   * 会把节点、连线、工具条一起变透明（那就不是「画布底透明」，是整个画布消失）。
+   *
+   * ⚠️ **兜底值 2026-10-17 从 `--v1-bg` 改成 `--ewb-canvas-base`**：
+   * 两者当前取的是同一个 dsh 令牌，但语义不同 ——
+   * canvas-base 是「画布那一层的底色」，v1-bg 还会被别处（面板/节点兜底）引用。
+   * 分开写，以后调画布底不会顺手改到别的面。
+   *
+   * ⚠️⚠️ **下面这条 `--xy-background-color: transparent` 不能删**
+   * （2026-10-17 修「背景透明滑块看不出效果」的第二层真因）：
+   * React Flow 的根元素带 `colorMode` 类，**深色下**它自己的规则是
+   *   `.react-flow.dark { --xy-background-color-default: #141414 }`
+   * 而根元素上 `background-color: var(--xy-background-color, var(--xy-background-color-default))`
+   * —— 那层是**不透明**的，于是画这个 div 的半透明底被它整个盖住。
+   * 在这个祖先上把它改成 `transparent`，等于让 React Flow 那层「不刷底色」，
+   * 露出下面我们自己的 `.canvas` 底（点阵网格层照旧，它用的是 pattern 色，不受影响）。
+   *
+   * 为什么写在 CSS 而不是给 `<ReactFlow style={{...}}>`：
+   * ① CSS 变量靠继承，写在祖先上等价，且**这个选择器正是 `.canvas` 自己的规则**；
+   * ② xyflow 的 props 类型里没有 `style`，传它会多一条与本次无关的类型错。 */
+  --xy-background-color: transparent;
+  background: var(--ewb-canvas-bg, var(--ewb-canvas-base));
+  overflow: hidden;
+}
+/* ── 工具条 ──────────────────────────────────────────────── */
+.toolbar {
+  /* ── 票 54（用户 2026-10-29 定案甲 1）：**画布内悬浮**，不再占画布上方一整行 ──
+   *
+   * ## 改之前是什么
+   *
+   * `flex: 0 0 auto` + `border-bottom` + `background` —— 它排在 `.canvas` **外面**，
+   * 吃掉画布上方一整行高度，还带一条底边。用户原话：「两边都不要顶部栏，
+   * 顶部在画布中悬浮」。参考项目也是这样：
+   * `canvas-top-bar.tsx:82` 是 `absolute left-0 right-0 top-0`，浮在画布之上。
+   *
+   * ## 现在这一层只负责两件事
+   *
+   * 1. **几何**：贴画布顶边、拉满宽、浮在上层
+   * 2. **不挡画布**：`pointer-events: none` —— 容器不吃事件，
+   *    所以用户在顶部条那片空白处照样能拖画布、能拉框选。
+   *    真正可点的只有按钮自己（`.toolBtn` 上有 `pointer-events: auto`）。
+   *
+   * ## 为什么不铺背景底板
+   *
+   * 参考的顶部条容器也是 `pointer-events-none`、**只有按钮自己有底**。
+   * 用户说的「他的背景就是画布」指的就是这个：浮层不铺底，画布透出来。
+   * 所以这里把原来的 `background` 与 `border-bottom` 都去掉了。
+   *
+   * ## 容器查询的现状（票 55 之后）
+   *
+   * `container-type: inline-size` 还挂着，但**只服务一条规则**：
+   * 窄屏（≤520px）时把名称胶囊收窄（`.tbChip { max-width }`）。
+   *
+   * 原来那套「按工具条宽度隐按钮」的四档 `@container` 与按钮上的
+   * **宽度分档属性**已**整段删除**（理由见下面「窄屏」那一节的开头）。
+   */
+  container-type: inline-size;
+  container-name: ewb-toolbar;
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  /* 不铺底、不吃事件（见上面「只负责两件事」）。 */
+  background: transparent;
+  border: none;
+  pointer-events: none;
+  /* 兜底：排不下时**换行**（不是隐藏，也不是横向滚动）。
+   *
+   * ⚠️ **这一条必须在基础规则里，不能放进 `@container ewb-toolbar`** ——
+   * 2026-10-14 实测（真 Chromium）：**容器查询不作用于容器自己**，
+   * 只作用于它的后代。而 `.toolbar` 正是那个 `container-type: inline-size` 的元素，
+   * 所以写在下面对应档位里的 `.toolbar { … }` **一条都没生效过**（死代码）。
+   *
+   * 于是改成**无条件换行**：宽度够时一项都不会换行，与 `nowrap` 完全同形；
+   * 宽度不够时按钮掉到第二行 —— 这正是用户 #9 要的「宽度再低也应该出现」。
+   *
+   * 为什么不是横向滚动：本文件原来有 `overflow-x: auto` + 隐藏滚动条
+   * （`scrollbar-width: none` / `::-webkit-scrollbar { display: none }`），
+   * 那等于**溢出内容既看不见也够不着**（只能靠触控板横拨）——
+   * 与「按钮被 `display:none`」是同一类失败，只是更难发现。 */
+  flex-wrap: wrap;
+  overflow-x: hidden;
+  overflow-y: hidden;
+}
+
+/* 按钮里「图标」与「文字」两部分。
+ * 窄屏时只隐藏文字、图标保留（title 属性已在，悬浮自然显示完整说明）。 */
+.toolIcon {
+  flex: 0 0 auto;
+  /* 图标字形宽度不一（▶ 窄、🔒 宽），给个固定框让各按钮视觉对齐。 */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+}
+.toolLabel {
+  white-space: nowrap;
+}
+
+/* ── 窄屏（票 55 重写）────────────────────────────────────
+ *
+ * ## 这一整段的前身是「宽度分档属性三档 + 四档 `@container`」，已删
+ *
+ * 它守的是「**窗口很宽、右侧栏拖窄时**收按钮」——所以 `container-type`
+ * 挂在 `.toolbar` 上，用「工具条自己的宽度」（= 右列宽度）当基准：
+ *
+ *   ≤1180px  隐「低优先级」的按钮（按钮上挂一个宽度分档属性）
+ *   ≤980px   隐「中优先级」的按钮
+ *   ≤740px   文字隐、只显图标
+ *
+ * 票 54 之后工具条变成**画布内悬浮条**，宽度 = 画布宽度。于是
+ * 「≤1180px 隐 low」变成「**画布窄到 1180 时隐**」——
+ * 与 2026-10-14 那次设计的意图已经不是一回事。
+ *
+ * ## 现在靠什么
+ *
+ * 1. **顶部条**：按钮只剩六件（侧栏、名称、保存态、设置、主题、关闭），
+ *    不再需要分档。排不下就换行 —— `flex-wrap: wrap` 在 `.toolbar`
+ *    **基础规则**里（无条件生效，2026-10-14 真 Chromium 实测过的写法）。
+ * 2. **底部主操作位**：判据 6 的「锁定 → 主题 → 撤销/重做 依次少显示」
+ *    落在那一侧 —— `EcomWorkbench.module.css` 的
+ *    `.canvasDockBtn[data-collapse]` 三档，按**画布区宽度**判。
+ *
+ * ⚠️ **不许两套机制并存**：同时存在时哪条生效取决于求值顺序，不可控。
+ * 所以四档 `@container` 与按钮上那些宽度分档属性一起删干净了。
+ *
+ * ⚠️ **`container-type: inline-size` 还留在 `.toolbar` 上** —— 见下面那条
+ * 「名称在窄屏省略」的规则，它还需要这个容器。查的是 `.tbChip` 的
+ * `max-width`，不是隐藏任何按钮。
+ */
+@container ewb-toolbar (max-width: 520px) {
+  /* 窄屏时名称胶囊收窄（**不是隐藏按钮**）—— 长文件名会把这个条撑得很长，
+   * 而它是「这一份是什么」，即使短也应看得见。 */
+  .tbChip { max-width: 140px; }
+}
+
+.toolBtn {
+  /* 父层 `.toolbar` 是 `pointer-events: none`（不吃事件、不挡画布），
+   * 所以按钮必须自己声明接收事件，否则一颗都点不动。 */
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 11px;
+  border-radius: 8px;
+  border: 1px solid var(--v1-line);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--v1-ink);
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-meta);
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: box-shadow 200ms, border-color 200ms, background-color 200ms;
+}
+.toolBtn:hover { border-color: color-mix(in srgb, var(--v1-accent) 55%, transparent); box-shadow: 0 0 12px rgba(124, 156, 255, 0.28); }
+.toolBtn:active { transform: translateY(1px); }
+.toolBtn:focus-visible { outline: 2px solid var(--v1-accent); outline-offset: 1px; }
+
+.toolPrimary { border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 50%, transparent); color: var(--dsw-alias-state-success-primary); }
+.toolPrimary:hover { box-shadow: 0 0 14px color-mix(in srgb, var(--dsw-alias-state-success-primary) 40%, transparent); border-color: rgba(78, 201, 176, 0.85); }
+.toolDanger { border-color: rgba(240, 96, 112, 0.45); color: var(--dsw-alias-state-error-primary); }
+.toolDanger:hover { box-shadow: 0 0 14px rgba(240, 96, 112, 0.4); }
+.toolBtn[disabled] { opacity: 0.38; cursor: default; box-shadow: none; transform: none; }
+
+.tbGap { flex: 1 1 auto; }
+
+/* ── 票 54：悬浮条上的三件非按钮件 ─────────────────────────────
+ *
+ * `.tbSide` 是一组（左组 / 右组），它自己 `pointer-events: none` ——
+ * 组里的空白处仍然能穿透到画布。组里的按钮各自 `auto`。
+ *
+ * ⚠️ 不要给 `.tbSide` 设 `auto`：那样「左组到右组之间的空白」不能穿，
+ * 而那片空白正是画布最常被拖动的地方（顶部条横跨整个画布宽）。
+ * 用户要的是「浮层在画布中，背景就是画布」。 */
+.tbSide {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  pointer-events: none;
+}
+/* 组里的每一颗（按钮、名称胶囊、保存态）自己接收事件。 */
+.tbSide > * { pointer-events: auto; }
+
+/* ── 票 54：引擎连接状态那五个类**已删** ──
+ *
+ * `.engineDot` / `.engineText` / `.engineOn` / `.engineOff` / `.engineWait`
+ * 是工具条上那个「引擎已连接 / 未连接 / 连接中」的圆点。用户 2026-10-29
+ * 定了「画布中不需要出现，简约点」→ JSX 删了 → 这五个类零引用。
+ *
+ * ⚠️ 删的是**样式**，不是能力：引擎探测（`probeEngine`）还在跑，
+ * 它拿工作目录那件事必须继续。引擎健康检测整体记在
+ * `docs/备忘-延后开发功能.md` 第 13 条（用户定延后）。 *//* ── 票 54：悬浮条左组那两件（名称胶囊 + 保存态）──────────────────
+ *
+ * 它们**不是按钮**（点名称没有动作），所以不用 `.toolBtn`。
+ * 但父组是 `pointer-events: none`，所以这两件必须自己 `auto` ——
+ * 否则 `title` 的悬停提示出不来。
+ *
+ * 形状沿用原来那个归属胶囊（`.chip` / `chipHot`，来自 `node-form.module.css`），
+ * 这里只是把它挪进悬浮条、并补上「父层不吃事件」这条前提。 */
+.tbChip {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 220px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid var(--v1-line);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--v1-ink);
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+/* 「· 未保存」：强调色，属于「此刻需要注意」的信息（与计数条里「选中 N」同族）。 */
+.tbChipHot {
+  flex: 0 0 auto;
+  color: var(--v1-accent);
+}
+/* 保存态：只在不说话不行的时候出现（保存中 / 失败）。 */
+.tbHint {
+  pointer-events: auto;
+  padding: 2px 6px;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+  white-space: nowrap;
+}
+.tbHint[data-ewb-canvas-save="error"] { color: var(--dsw-alias-state-error-primary); }
+
+.tbTitle {
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-label);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--v1-dim);
+}
+
+
+/* ── 拖动时跟在鼠标旁的提示（「松手会发生什么」）────────────────
+ * 用户 2026-10-12：「在鼠标位置弹出移出循环提醒」。
+ * 用 `position: fixed`（坐标来自 pointer 事件的 clientX/Y，那是视口坐标），
+ * 并且**绝不能接收指针事件** —— 它就在光标旁边，能拦住拖动就荒唐了。 */
+.dragHint {
+  position: fixed;
+  z-index: 40;
+  pointer-events: none;
+  max-width: 220px;
+  padding: 4px 8px;
+  border-radius: var(--rd-sm);
+  border: 1px solid color-mix(in srgb, var(--v1-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--v1-panel, #1b2130) 92%, transparent);
+  color: var(--v1-ink);
+  font-size: var(--text-ewb-caption);
+  font-family: inherit;
+  white-space: nowrap;
+  /* 深度：与浮起来的菜单同族（光从上方来 —— 只加向下投影，不加负偏移）。 */
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.35);
+}
+
+/* ── 连线：颜色由数据里写死（跟随源端口色），这里只补发光 ── */
+.canvas :global(.react-flow__edge-path) { stroke-width: 2; transition: stroke-width 160ms; }
+.canvas :global(.react-flow__edge:hover .react-flow__edge-path) { stroke-width: 3.2; }
+.canvas :global(.react-flow__edge.selected .react-flow__edge-path) { stroke-width: 3.2; }
+.canvas :global(.react-flow__connection-path) { stroke-width: 2.4; }
+
+/* ── 连线要**压在节点上面**（用户 2026-10-12：「线和节点框的图层不对，
+ *    线应该在节点图层上面」）─────────────────────────────────────
+ *
+ * 为什么会反过来：React Flow 在同一个 viewport 里**先渲染连线、后渲染节点**
+ * （源码 `children: [EdgeRenderer, …, NodeRenderer]`，实测确认）。
+ * 两者都是 `position: absolute` 的兄弟层，靠**文档顺序**决定叠放 ——
+ * 后画的节点当然盖住先画的线。
+ *
+ * 修法：给连线层一个更高的 `z-index`。
+ * 两层的定位都是 absolute（React Flow 的 `.react-flow__edges` 自带
+ * `position: absolute`），所以 z-index 直接生效，不用动 DOM 结构。
+ *
+ * 为什么这样更好看：连线是**关系**，节点是**实体**。
+ * 线穿到节点上方时，「这两个节点是连着的」一眼可见；
+ * 反过来线被节点截断，接口处看着像断线。
+ *
+ * ⚠️ 只提连线层，**不要动节点层的 z-index** ——
+ * 节点自己还用 z-index 表达选中/拖动时的抬升（React Flow 内部逻辑），
+ * 一起改会打架。 */
+.canvas :global(.react-flow__edges) { z-index: 2; }
+/* 连线标签层跟着一起提（否则标签会被节点盖住，而它属于连线）。 */
+.canvas :global(.react-flow__edgelabel-renderer) { z-index: 3; }
+
+
+/* ── 连线颜色图例（可隐藏）─────────────────────────────────
+ * 说明：端口圆点与连线用同一套颜色（D2 两重编码：颜色 + 连线同色）。
+ * 连线颜色跟随「源端口」的类型色，所以看线色 = 看源头的输出类型。 */
+.legend {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  padding: 5px 12px;
+  border-bottom: 1px solid var(--v1-line);
+  background: var(--dsw-alias-bg-layer-1);
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+  letter-spacing: 0.04em;
+}
+
+.legendTitle {
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  opacity: 0.75;
+}
+
+.legendItem {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legendDot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  display: inline-block;
+  box-shadow: 0 0 6px currentColor;
+}
+
+.legendNote {
+  margin-left: auto;
+  opacity: 0.6;
+  font-style: italic;
+}
+
+/* 工具条上「已开启」的按钮（图例按钮用） */
+.toolWarn {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 55%, transparent);
+  color: var(--c-warning);
+}
+.toolOn {
+  border-color: var(--v1-accent);
+  box-shadow: 0 0 0 1px var(--v1-accent, #4a9eff) inset, 0 0 10px rgba(74, 158, 255, 0.35);
+}
+
+
+/* ── inline 模式：直接在节点上展开设置 ──────────────────
+ * 与「贴右侧弹框」是同一套表单体（NodeEditorBody），只是容器不同。
+ * 用户点其他节点或点画布时收起。 */
+/* ── 轻量提示条（保存/导入结果）─────────────────────
+ * 成功 3 秒自动消失；失败留着等用户看完（带手动关）。 */
+.noticeWrap {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 30;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  pointer-events: none;
+  max-width: min(560px, calc(100% - 24px));
+}
+.notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 7px;
+  padding: 7px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--v1-line);
+  background: var(--v1-panel);
+  backdrop-filter: blur(10px);
+  box-shadow: var(--shadow-2);
+  font-size: var(--text-ewb-meta);
+  line-height: 1.5;
+  color: var(--v1-ink);
+  pointer-events: auto;
+}
+.notice_ok { border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 50%, transparent); }
+.notice_warn { border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 50%, transparent); }
+.notice_error { border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 60%, transparent); }
+.noticeMark { flex: 0 0 auto; font-weight: 700; }
+.notice_ok .noticeMark { color: #4ec9b0; }
+.notice_warn .noticeMark { color: #f0b429; }
+.notice_error .noticeMark { color: #ff5f6d; }
+.noticeText { flex: 1 1 auto; min-width: 0; word-break: break-all; }
+.noticeClose {
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  color: var(--v1-dim);
+  cursor: pointer;
+  font-size: var(--text-ewb-label);
+  line-height: 1;
+  padding: 0 2px;
+}
+.noticeClose:hover { color: var(--v1-ink); }
+
+
+/* ── 本轮新增/调整的样式（2026-10-08）────────────────── */
+
+/* ── 自动排版与「缩放适配」那几段**已删**（票 56）─────────────────────
+ *
+ * 删的是 `.canvasTools` / `.layoutGroup` / `.layoutBtn` / `.canvasToolBtn`。
+ *
+ * 它们原来挂在右上角那个 `<Panel position="top-right">` 里，装两样：
+ *   · 自动排版的**两个方向按钮**（`layoutGroup` + 两个 `layoutBtn`）
+ *   · 「⤢ 缩放适配」一颗（`canvasToolBtn`）
+ *
+ * 票 56 把两样都并进了右下角那排（用户丙 13 / 25），而那排是**两边共用**的组件
+ * （`CanvasCornerControls`，样式在 `EcomWorkbench.module.css` 的 `canvasCorner*`）。
+ * 所以这四条在这份文件里**零引用**了。
+ *
+ * ⚠️ 想找自动排版那两个方向按钮，去 `CanvasZoomControls.tsx` 的
+ * `data-ewb-corner-layout` 那一段。
+ */
+
+/* ── 执行画布特有的两处定位（票 56）───────────────────────────────
+ *
+ * ⚠️ **本票唯一超出票面四段的地方**，报备理由：
+ * `CanvasCornerControls` 本身两边共用（样式在共用文件里），
+ * 但「它在执行画布这个 `<Panel>` 里怎么摆」是这一侧的活 ——
+ * 内容画布不走 `<Panel>`，摆法不同。写进共用文件会让内容画布跟着变。
+ *
+ * 两个 `<Panel>` 都在右下角：
+ *   · `cornerPanel` —— 贴边（浮层本体）
+ *   · `nodeCountPanel` —— 同一个角，**上方**，给浮层让位置
+ *
+ * 间距怎么算的：浮层高 32（22 按钮 + 上下各 5 padding）+ `bottom: 10` = 占掉底部 42px。
+ * 计数块给 `margin-bottom: 44`（42 + 2 余量），所以不叠、也不至于离太远。
+ * 判据 8 要「DOM 上是兄弟、有间距」，这两条同时成立。 */
+.cornerPanel {
+  /* React Flow 的 `<Panel position="bottom-right">` 自带 15px margin ——
+   * 压到 10，与 `.canvasCorner` 自己的 `right/bottom: 10` 对齐，
+   * 否则浮层被 Panel 再推一次，右下角留白比预期大一截。 */
+  margin: 10px !important;
+}
+.nodeCountPanel {
+  /* 让到浮层上方（见上面的间距算法）。 */
+  margin-bottom: 44px !important;
+  pointer-events: none;
+}
+
+
+
+/* ── 连线不合法的原因提示 ─────────────────────────────── */
+.connHint {
+  padding: 5px 12px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--dsw-alias-state-error-primary) 35%, transparent);
+  background: var(--c-danger-bg);
+  backdrop-filter: blur(8px);
+  color: var(--dsw-alias-state-error-primary);
+  font-size: var(--text-ewb-label);
+  letter-spacing: 0.04em;
+}
+
+/* ── 对齐辅助线（拖动时出现）──────────────────────────
+ * 画在画布坐标系里，所以用 absolute + 1px 线，不用 fixed。 */
+/* ⚠️ **2026-10-29（票 59）`opacity: 0.7` 改成走变量**。
+ *
+ * 用户要「参考线透明度可调」。写死的 0.7 现在变成兜底值：
+ * 画布容器（`WorkflowCanvas`）按设置下发 `--ewb-guide-opacity`，
+ * 没设过时就是 0.7 —— 与改动前**一字不差**。
+ *
+ * ⚠️ 内容画布的参考线**不在这个文件**（它画在自己那一层，见
+ * `ContentCanvas.tsx` 的 `contentCanvasGuide*`）—— 那边要单独接线，
+ * 只改这里不会让内容画布的参考线跟着变。 */
+.helperV {
+  position: absolute; top: 0; width: 1px; height: 100%;
+  background: var(--c-accent); opacity: var(--ewb-guide-opacity, 0.7); pointer-events: none;
+}
+.helperH {
+  position: absolute; left: 0; height: 1px; width: 100%;
+  background: var(--c-accent); opacity: var(--ewb-guide-opacity, 0.7); pointer-events: none;
+}
+
+/* ── 设置抽屉（快捷键帮助 + 开关）────────────────────
+ * 从右侧滑出、不遮挡画布中心——用户查快捷键时往往正想操作画布。 */
+/* 设置项一行（标签 + 滑块 + 当前值 + 复位）——与快捷键行同一套尺度。 */
+.setLabel { flex: 0 0 auto; min-width: 64px; font-size: var(--text-ewb-meta); color: var(--v1-ink); }
+.setRange { flex: 1 1 auto; min-width: 0; accent-color: var(--v1-accent); }
+.setValue {
+  flex: 0 0 auto; min-width: 46px; text-align: right;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-meta); color: var(--v1-ink);
+}
+.setReset {
+  flex: 0 0 auto;
+  padding: 2px 7px; border-radius: 6px;
+  border: 1px solid var(--v1-line); background: transparent;
+  color: var(--v1-dim); font-family: inherit; font-size: var(--text-ewb-label); cursor: pointer;
+}
+.setReset:hover { border-color: var(--v1-accent); color: var(--v1-ink); }
+/* 设置项下面的一行小字（只在需要时出现，如「当前为自动」）。 */
+
+/* ── 浏览器设置那一段（2026-10-13 新增）─────────────────────────────
+ * 为什么单独几个类：那一段里有**下拉框**与**一段说明文字**，
+ * 而设置抽屉原来只有滑块与按钮（`.setRange` / `.setReset`）。
+ * 下拉框直接吃浏览器默认样式会与这里的尺度过不到一起，所以显式定一下
+ * （字号取与 `.setValue` 同一档，保证一行里视觉重量一致）。 */
+.setSelect {
+  flex: 1 1 auto; min-width: 0;
+  padding: 2px 6px; border-radius: 6px;
+  border: 1px solid var(--v1-line); background: transparent;
+  color: var(--v1-ink); font-family: inherit; font-size: var(--text-ewb-meta);
+  cursor: pointer;
+}
+.setSelect:hover { border-color: var(--v1-accent); }
+.setSelect:disabled { opacity: 0.5; cursor: default; }
+
+/* ══ 下拉选项的底/字色（用户 2026-10-14 的 §11）════════════════════════
+ *
+ * 用户原话：「在黑色主题下，节点中的选项栏不可见（选项栏的底色和文字颜色都是
+ * 白色），被选中的才是蓝底黑字可见的，未选中项目视觉上看不到。」
+ *
+ * ## 为什么这段在**三个** CSS 文件里各出现一次（而不是提成一个共用类）
+ *
+ * 三个下拉分属三个 CSS Modules（`.select` 在 node-form、`.setSelect` 在本文件、
+ * `.loopFieldSelect` 在 node-card），**每个文件各自给类名加 hash**
+ * （`.select` → `.Xy12_select`、`.setSelect` → `.Ab34_setSelect`）——
+ * 所以「一条规则管三个类」在 CSS Modules 里**写不出来**。
+ *
+ * 唯一能一处写清的办法是 `:global(option)`（裸元素选择器不加 hash），
+ * 但那样这条规则会**漏到官方 dsh 的界面上**（它也有 `<option>`）——
+ * 违反本插件的分层纪律（「不碰官方任何类名」，见 `src/client/index.ts`）。
+ * 用 `:global` 换来的那点维护便利，不值得冒「改了官方组件外观」的风险。
+ *
+ * **所以选「三处各一条 + 测试兜底」**：漏一处是很容易发生的（本轮就漏了两处），
+ * 而 `tests/css-refs.mjs` 现在会**逐个类名**核对产物里有没有对应的 option 规则 ——
+ * 下次再漏会**当场变红**，不靠人记。
+ *
+ * ## ⚠️ 局限（照实说）
+ *
+ * 原生 `<select>` 的弹层在部分 Windows 场景由系统画，我们的 option 规则会被忽略；
+ * 那时显示什么样由系统决定。这是原生控件的固有边界，不是这段 CSS 的缺陷。
+ * 要彻底掌控得换自绘下拉（键盘/无障碍/定位都要自己做），代价不划算。
+ *
+ * 实测对比度（真 Chromium + 产物真 CSS）：不写时 option 底是透明的 →
+ * 暗色 17:1 但**亮色只有 1.11:1**（看不见）；写了之后暗色 12.80:1、亮色 18.90:1。 */
+.setSelect option,
+.setSelect optgroup {
+  background-color: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+}
+/* 设置里那种「输入一个名字」的小输入框（加标签用）。 */
+.setInput {
+  flex: 1 1 auto; min-width: 0;
+  padding: 3px 6px; border-radius: 6px;
+  border: 1px solid var(--v1-line); background: transparent;
+  color: var(--v1-ink); font-family: inherit; font-size: var(--text-ewb-meta);
+}
+.setInput::placeholder { color: var(--v1-dim); opacity: 0.7; }
+/* 一段说明文字（比 .setHint 长，会换行的那些）。 */
+.setNote {
+  padding: 4px 0; font-size: var(--text-ewb-caption);
+  color: var(--v1-dim); line-height: 1.5;
+}
+/* 检测到的一条浏览器（复用「依赖项」那套视觉：左边来源标签、右边名字/路径）。 */
+.setDep { display: flex; align-items: baseline; gap: 6px; padding: 2px 0; }
+.setDepKind {
+  flex: 0 0 auto; min-width: 76px;
+  color: var(--v1-dim); font-size: var(--text-ewb-caption);
+}
+/* 找不到的浏览器标黄 —— 用户要能一眼看出「这个为什么没被选上」。 */
+.setDepWarn { color: var(--dsw-alias-state-warn-primary); font-size: var(--text-ewb-meta); }
+.scKeys {
+  flex: 0 0 auto; min-width: 84px;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-meta);
+  color: var(--v1-ink);
+  padding: 1px 6px; border-radius: 4px;
+  border: 1px solid var(--v1-line); background: var(--dsw-alias-interactive-bg-hover);
+}
+.scWhat { flex: 1 1 auto; font-size: var(--text-ewb-meta); line-height: 1.6; color: var(--v1-dim); }

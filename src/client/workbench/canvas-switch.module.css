@@ -1,0 +1,28 @@
+/* 画布样式切换器：顶部细条 + 画布占满剩余高度 */
+
+.wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+
+
+
+
+.hint {
+  margin-left: auto;
+  color: var(--dsw-alias-label-caption);
+  font-size: var(--text-ewb-caption);
+}
+
+.stage {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}

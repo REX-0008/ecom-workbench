@@ -1,0 +1,95 @@
+/* 右键菜单 —— 三种上下文（节点 / 选中的一批 / 画布空白）共用一套外观。
+ *
+ * ## 定位为什么用 fixed
+ *
+ * 菜单挂在画布容器里，但用的是 `position: fixed` + 屏幕坐标。
+ * 理由：React Flow 的回调给的是**屏幕坐标**（clientX/Y），
+ * 而菜单**不该跟着画布缩放**——放大画布时菜单文字也跟着变大是错的。
+ * 用 fixed 就不用做「屏幕坐标 → 画布坐标」的换算，也不用被 viewport 的 transform 影响。
+ *
+ * ⚠️ fixed 的代价是**可能超出窗口**（右键点靠近右下边缘时菜单被截掉），
+ * 所以翻转逻辑放在组件里（渲染后量一次尺寸，超了就翻向另一侧）。
+ */
+.menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 176px;
+  max-width: 260px;
+  padding: 4px;
+  border-radius: var(--rd-md);
+  border: 1px solid var(--v1-line);
+  background: var(--v1-panel);
+  backdrop-filter: blur(12px);
+  box-shadow: var(--shadow-3);
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+/* 菜单的第几「段」（用一条细线隔开）—— 例如「运行类」与「删除」分开。 */
+.sep {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--v1-line);
+}
+
+.item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 5px 8px;
+  border: none;
+  border-radius: var(--rd-sm);
+  background: transparent;
+  color: var(--v1-ink);
+  font-family: var(--dsw-font-family);
+  font-size: var(--text-ewb-meta);
+  text-align: left;
+  cursor: pointer;
+}
+
+.item:hover:not(:disabled) { background: var(--dsw-alias-interactive-bg-hover); }
+.item:focus-visible { outline: 2px solid var(--v1-accent); outline-offset: -2px; }
+
+/* 禁用态（画布锁定时会改动画布的项都禁用）——用低不透明度，不用灰色文字
+ * （灰字在暗底上会糊掉；降低不透明度保留可读性又能看出「不可点」）。 */
+.item:disabled { opacity: 0.4; cursor: default; }
+
+/* 图标固定宽度，让各项文字左对齐。 */
+.itemIcon {
+  flex: 0 0 auto;
+  min-width: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--v1-dim);
+}
+
+.itemText { flex: 1 1 auto; min-width: 0; }
+
+/* 右侧的快捷键提示（如 Ctrl+C）——低对比度，只是提示。 */
+.itemKey {
+  flex: 0 0 auto;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+  opacity: 0.7;
+}
+
+/* 危险操作（删除）：文字用语义红——**这是唯一用颜色的菜单项**，
+ * 因为它是唯一「点了会丢东西」的项。 */
+.danger { color: var(--dsw-alias-state-error-primary); }
+.danger .itemIcon { color: var(--dsw-alias-state-error-primary); }
+
+/* 菜单顶部的上下文标题（告诉你「这是对谁的操作」）。 */
+.head {
+  padding: 4px 8px 6px;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  letter-spacing: 0.08em;
+  color: var(--v1-dim);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}

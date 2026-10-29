@@ -1,0 +1,66 @@
+{
+  "name": "@our/ecom-workbench",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "lib/index.js",
+  "exports": {
+    ".": "./lib/index.js",
+    "./client": "./lib/client.js",
+    "./src/*": "./src/*",
+    "./package.json": "./package.json",
+    "./locale/*": "./locale/*"
+  },
+  "dsh": {
+    "engines": {
+      "dsh": ">=0.2.0-rc.1"
+    },
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "inject": [
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-renderer",
+        "@deepseek-ai/dsh-client-ui-layout"
+      ],
+      "platform": "web"
+    }
+  },
+  "scripts": {
+    "bundle": "node ../../refs/deepseek-harness@62962ee4/node_modules/tsdown/dist/run.mjs -c tsdown.config.ts --no-clean && node scripts/copy-runtime.mjs && node scripts/deploy.mjs",
+    "check:tdz": "node tests/tdz-check.mjs",
+    "check:types": "node ../../refs/deepseek-harness@62962ee4/node_modules/typescript/bin/tsc -p tsconfig.check.json",
+    "check:client": "node ../../refs/deepseek-harness@62962ee4/node_modules/typescript/bin/tsc -p tsconfig.client.json",
+    "test": "node scripts/run-tests.mjs"
+  },
+  "files": [
+    "lib/index.js",
+    "lib/client.js",
+    "icon.svg",
+    "locale",
+    "cordis.patch.yml"
+  ],
+  "description": "电商工作台：以工作流为核心的多板块运营工作台（BI/监控/采集/工作流/图片视频）。",
+  "icon": "icon.svg",
+  "dependencies": {
+    "@xyflow/react": "^12.12.0",
+    "antd": "^6.6.8",
+    "elkjs": "^0.12.0",
+    "p-queue": "^8.1.1",
+    "playwright": "^1.62.1",
+    "use-stick-to-bottom": "^1.1.6",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "jsdom": "^30.1.2",
+    "@tailwindcss/node": "4.3.3",
+    "@tailwindcss/oxide": "4.3.3",
+    "tailwindcss": "4.3.3",
+    "lightningcss": "1.32.0",
+    "@types/react": "^18.3.31",
+    "@types/react-dom": "^18.3.7",
+    "react": "18.3.1",
+    "react-dom": "18.3.1"
+  }
+}

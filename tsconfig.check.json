@@ -1,0 +1,31 @@
+{
+  "compilerOptions": {
+    "target": "ES2024",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "noEmit": true,
+    "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
+    "lib": [
+      "ES2024",
+      "DOM",
+      "DOM.Iterable"
+    ],
+    "types": [
+      "node"
+    ],
+    "strict": false,
+    "typeRoots": [
+      "F:/AGENTS/agent-chat-dsh/refs/deepseek-harness@62962ee4/node_modules/@types",
+      "F:/AGENTS/agent-chat-dsh/my-dsh-plugins/ecom-workbench/node_modules/@types"
+    ]
+  },
+  "include": [
+    "src/workflow/**/*.ts",
+    "src/dispatch/**/*.ts",
+    "src/schedule/**/*.ts",
+    "src/notify/**/*.ts",
+    "src/index.ts",
+    "types-shim.d.ts"
+  ]
+}

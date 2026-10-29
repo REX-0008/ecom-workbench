@@ -1,0 +1,333 @@
+{
+  "481": {
+    "inputs": {
+      "filename_prefix": "Qwen_image_2.1",
+      "format": "png",
+      "format.bit_depth": "8-bit",
+      "format.input_color_space": "sRGB",
+      "images": [
+        "508",
+        0
+      ]
+    },
+    "class_type": "SaveImageAdvanced",
+    "_meta": {
+      "title": "out_image"
+    }
+  },
+  "485": {
+    "inputs": {
+      "value": "[核心排版与风格]：\n2x2网格的角色设定参考表，专业照片风格，干净的中性灰色影棚背景，柔和均匀的影棚光照。\n\n[通用角色描述]：\n一男子扮演孙悟空，戴‘佛’字帽，穿黄灰相间服饰。每个面板上方都有清晰、简洁的文本标签。\n\n[面板 1 描述（左上）]：\n面板1（左上）：角色的正脸头肩像（特写），面朝前方。文本：PANEL 1 / FACE: FRONT。\n\n[面板 2 描述（右上）]：\n面板2（右上）：角色的侧脸头肩像（特写），面朝[左/右]。文本：PANEL 2 / FACE: SIDE。\n\n[面板 3 描述（左下）]：\n面板3（左下）：角色的全身正视图，站姿端正，双手自然下垂。文本：PANEL 3 / BODY: FRONT。\n\n[面板 4 描述（右下）]：\n面板4（右下）：角色的全身背视图，站姿端正。文本：PANEL 4 / BACK。\n\n 参考图片: <Picture 1>"
+    },
+    "class_type": "PrimitiveStringMultiline",
+    "_meta": {
+      "title": "prompt"
+    }
+  },
+  "486": {
+    "inputs": {
+      "value": 1080
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "seed"
+    }
+  },
+  "487": {
+    "inputs": {
+      "value": 1152
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "width"
+    }
+  },
+  "488": {
+    "inputs": {
+      "value": 2048
+    },
+    "class_type": "PrimitiveInt",
+    "_meta": {
+      "title": "height"
+    }
+  },
+  "490": {
+    "inputs": {
+      "image": "t11fd4c33015373ccfa55b47064.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_03"
+    }
+  },
+  "493": {
+    "inputs": {
+      "image": "-u_hbRQ5_ref_2.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_02"
+    }
+  },
+  "495": {
+    "inputs": {
+      "image": "t11fd4c33015373ccfa55b47064.jpg"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_01"
+    }
+  },
+  "496": {
+    "inputs": {
+      "image": "-u_hbRQ5_ref_2.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_04"
+    }
+  },
+  "497": {
+    "inputs": {
+      "image": "-u_hbRQ5_ref_2.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_05"
+    }
+  },
+  "498": {
+    "inputs": {
+      "image": "-u_hbRQ5_ref_2.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_06"
+    }
+  },
+  "499": {
+    "inputs": {
+      "image": "-u_hbRQ5_ref_2.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_07"
+    }
+  },
+  "500": {
+    "inputs": {
+      "image": "-u_hbRQ5_ref_2.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_08"
+    }
+  },
+  "501": {
+    "inputs": {
+      "image": "-u_hbRQ5_ref_2.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_09"
+    }
+  },
+  "502": {
+    "inputs": {
+      "image": "-u_hbRQ5_ref_2.png"
+    },
+    "class_type": "LoadImage",
+    "_meta": {
+      "title": "ref_image_10"
+    }
+  },
+  "504": {
+    "inputs": {
+      "unet_name": "qwen_image_2.1_bf16.safetensors",
+      "weight_dtype": "default"
+    },
+    "class_type": "UNETLoader",
+    "_meta": {
+      "title": "select_models_diffusion_models"
+    }
+  },
+  "505": {
+    "inputs": {
+      "clip_name": "qwen3vl_8b_bf16.safetensors",
+      "type": "qwen_image",
+      "device": "default"
+    },
+    "class_type": "CLIPLoader",
+    "_meta": {
+      "title": "select_models_clip"
+    }
+  },
+  "506": {
+    "inputs": {
+      "vae_name": "qwen_image_2.1_vae_bf16.safetensors"
+    },
+    "class_type": "VAELoader",
+    "_meta": {
+      "title": "加载VAE"
+    }
+  },
+  "507": {
+    "inputs": {
+      "width": [
+        "487",
+        0
+      ],
+      "height": [
+        "488",
+        0
+      ],
+      "batch_size": 1
+    },
+    "class_type": "EmptyLatentImage",
+    "_meta": {
+      "title": "空Latent图像"
+    }
+  },
+  "508": {
+    "inputs": {
+      "samples": [
+        "509",
+        0
+      ],
+      "vae": [
+        "506",
+        0
+      ]
+    },
+    "class_type": "VAEDecode",
+    "_meta": {
+      "title": "VAE解码"
+    }
+  },
+  "509": {
+    "inputs": {
+      "seed": [
+        "486",
+        0
+      ],
+      "steps": 25,
+      "cfg": 1,
+      "sampler_name": "euler",
+      "scheduler": "simple",
+      "denoise": 1,
+      "model": [
+        "511",
+        0
+      ],
+      "positive": [
+        "512",
+        0
+      ],
+      "negative": [
+        "512",
+        1
+      ],
+      "latent_image": [
+        "510",
+        0
+      ]
+    },
+    "class_type": "KSampler",
+    "_meta": {
+      "title": "K采样器"
+    }
+  },
+  "510": {
+    "inputs": {
+      "switch": true,
+      "on_false": [
+        "512",
+        2
+      ],
+      "on_true": [
+        "507",
+        0
+      ]
+    },
+    "class_type": "ComfySwitchNode",
+    "_meta": {
+      "title": "切换"
+    }
+  },
+  "511": {
+    "inputs": {
+      "device": "auto",
+      "dtype": "default",
+      "model": [
+        "504",
+        0
+      ]
+    },
+    "class_type": "QwenImage21Cache",
+    "_meta": {
+      "title": "Qwen Image 2.1 缓存"
+    }
+  },
+  "512": {
+    "inputs": {
+      "prompt": [
+        "485",
+        0
+      ],
+      "negative_prompt": "",
+      "resolution": 0,
+      "clip": [
+        "505",
+        0
+      ],
+      "images.image_1": [
+        "495",
+        0
+      ],
+      "vae": [
+        "506",
+        0
+      ],
+      "images.image_10": [
+        "502",
+        0
+      ],
+      "images.image_2": [
+        "493",
+        0
+      ],
+      "images.image_3": [
+        "490",
+        0
+      ],
+      "images.image_4": [
+        "496",
+        0
+      ],
+      "images.image_5": [
+        "497",
+        0
+      ],
+      "images.image_6": [
+        "498",
+        0
+      ],
+      "images.image_7": [
+        "499",
+        0
+      ],
+      "images.image_8": [
+        "500",
+        0
+      ],
+      "images.image_9": [
+        "501",
+        0
+      ]
+    },
+    "class_type": "TextEncodeQwenImage21",
+    "_meta": {
+      "title": "文本编码 Qwen Image 2.1"
+    }
+  }
+}

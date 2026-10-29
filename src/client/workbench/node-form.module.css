@@ -1,0 +1,622 @@
+/* 节点属性表单 —— 从 workflow-canvas.module.css 拆出。
+ * 含：节点旁浮卡、参数表单（按 n8n 规范）、可用变量清单、inline 编辑。
+ */
+
+/* ── 节点旁浮卡（属性面板） ──────────────────────────────── */
+/* 节点旁的属性浮卡。
+ * 修正（2026-10-08）：原来固定 width:268px —— 容器窄时会顶出视野、
+ * 右侧看不到。改为**自适应宽度**（窄容器里自动变窄），并给足最小宽度保证可用。 */
+.popover {
+  position: absolute;
+  z-index: 20;
+  width: min(300px, calc(100% - 8px));
+  min-width: 200px;
+  max-height: calc(100% - 8px);
+  overflow-y: auto;
+  border-radius: 12px;
+  border: 1px solid var(--v1-edge-hot);
+  background: var(--v1-panel);
+  backdrop-filter: blur(14px);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--v1-accent) 18%, transparent), var(--shadow-3), 0 0 34px color-mix(in srgb, var(--v1-accent) 20%, transparent);
+  color: var(--v1-ink);
+  animation: v1Pop 180ms cubic-bezier(0.22, 0.61, 0.36, 1);
+}
+@keyframes v1Pop { from { opacity: 0; transform: translateY(6px) scale(0.98); } }
+
+.popHead { display: flex; align-items: center; gap: 7px; padding: 9px 10px; border-bottom: 1px solid var(--v1-line); }
+.popTitle {
+  flex: 1 1 auto;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-meta);
+  font-weight: 700;
+  color: var(--v1-ink);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.popClose {
+  flex: 0 0 auto;
+  width: 22px; height: 22px;
+  border-radius: 6px;
+  border: 1px solid var(--v1-line);
+  background: transparent;
+  color: var(--v1-ink);
+  cursor: pointer;
+  font-size: var(--text-ewb-label);
+  line-height: 1;
+}
+.popClose:hover { border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 60%, transparent); color: var(--dsw-alias-state-error-primary); }
+
+.popBody { padding: 9px 10px 11px; }
+/* ⚠️ `.popMeta` 已删（2026-10-11）——它承载的那排小方块（执行方 / 状态 / 进度）
+ * 被用户判定为「这些都没用」，已从 NodeEditorPopover.tsx 里移除。
+ * `.chip` / `.chipHot` **保留**：画布左下角的「节点 N · 选中 M」计数条仍在用它们。 */
+.chip {
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  line-height: 16px;
+  padding: 0 6px;
+  border-radius: 4px;
+  border: 1px solid var(--v1-line);
+  color: var(--v1-dim);
+}
+/* 计数条里的「选中 N」——用强调色，因为它是「此刻正在发生」的信息 */
+.chipHot { color: var(--c-accent); margin-left: 4px; }
+
+/* ══ 浏览器一节的外壳（用户 2026-10-14 要求）══════════════════════
+ *
+ * 用户原话：「浏览器选择这个模块应该就是插件内容的一部分而不是一个独立模块，
+ * 他应该是 playwright 这个节点的**第一块内容**，而不是独立板块。
+ * **注意，这块内容要相对独立，因为后期别的浏览器相关的必须附带这个组件**
+ * 决定用什么浏览器。」
+ *
+ * 两句话看似矛盾，其实是两个要求，各有一条对应：
+ *   · **「是内容的一部分」** → 位置：移进 `.block` 里（与参数同一个滚动区），
+ *     不再是那个 flex 的兄弟项。修掉「把参数区压成 0 高」的真因（见组件里的实测说明）。
+ *   · **「要相对独立」** → 外观：这一层壳给它自己的面与边，
+ *     读起来是「参数里的一个自成一块的东西」，而不是散落的几个控件。
+ *
+ * 于是「独立」体现在**外观**，「属于内容」体现在**位置与滚动**。
+ *
+ * ⚠️ **不加 `overflow: hidden`**（哪怕只是为了圆角好看）——这一条是本项目的硬教训：
+ * `overflow` 不是 `visible` 的 flex 子项，其「自动最小尺寸」**算作 0**，
+ * 于是它成了整条链上唯一可被压扁的那个 → 内容被压没且不出滚动条。
+ * `.detailBlock` 当年正是这么中招的（见下面 `.block > *` 的长注释与 `height-chain` 测试）。
+ * 圆角在内容不外溢的前提下本来也不会溢出，不需要为此加 `overflow`。
+ */
+.browserBlock {
+  /* 与「参数」那一段拉开一点距离，让人看出这是彼此独立的两块。 */
+  margin-bottom: 8px;
+  padding: 7px 8px 8px;
+  border: 1px solid color-mix(in srgb, var(--v1-accent) 22%, transparent);
+  border-radius: 8px;
+  /* 淡强调色底：颜色纪律允许——它是**画布内**的节点设置区，
+   * 且这层底色的职能是「把这一块圈出来」，不是装饰。 */
+  background: color-mix(in srgb, var(--v1-accent) 6%, transparent);
+}
+/* 壳里那一节自己的 `margin-bottom` 会造成双重间距（`.param` 自带 9px）。 */
+.browserBlock > div { margin-bottom: 0; }
+
+.field { margin-bottom: 9px; }
+.fieldLabel {
+  display: block;
+  font-size: var(--text-ewb-meta);
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: var(--v1-dim);
+  margin-bottom: 4px;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+}
+.input, .select {
+  width: 100%;
+  box-sizing: border-box;
+  height: 27px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid var(--v1-line);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--v1-ink);
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-meta);
+}
+/* 焦点：**保留内凹**再叠一圈强调（直接覆盖 box-shadow 会把内凹丢掉）。 */
+.input:focus, .select:focus { outline: none; border-color: color-mix(in srgb, var(--v1-accent) 75%, transparent); box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.18), 0 0 0 2px color-mix(in srgb, var(--v1-accent) 22%, transparent); }
+.checkbox { flex: 0 0 auto; width: 15px; height: 15px; accent-color: #4fd6ff; }
+
+.seg { display: flex; gap: 4px; }
+.segBtn {
+  flex: 1 1 0;
+  height: 26px;
+  border-radius: 6px;
+  border: 1px solid var(--v1-line);
+  background: var(--dsw-alias-bg-layer-1);
+  color: var(--v1-dim);
+  font-size: var(--text-ewb-meta);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 160ms, box-shadow 160ms, color 160ms;
+}
+.segBtn:hover { color: var(--v1-ink); }
+.segOn { border-color: color-mix(in srgb, var(--v1-accent) 80%, transparent); color: var(--v1-ink); box-shadow: 0 0 12px color-mix(in srgb, var(--v1-accent) 30%, transparent) inset; }
+.warnOn { border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 85%, transparent); color: var(--dsw-alias-state-warn-primary); box-shadow: 0 0 12px color-mix(in srgb, var(--dsw-alias-state-warn-primary) 28%, transparent) inset; }
+.errOn { border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 80%, transparent); color: var(--dsw-alias-state-error-primary); box-shadow: 0 0 12px rgba(255, 95, 109, 0.26) inset; }
+
+.depList { display: flex; flex-direction: column; gap: 4px; }
+.dep {
+  display: flex; align-items: center; gap: 6px;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-meta);
+  color: var(--v1-ink);
+}
+.depKind { color: var(--v1-dim); font-size: var(--text-ewb-caption); min-width: 30px; }
+.depWarn { color: var(--dsw-alias-state-warn-primary); }
+/* 「怎么装」那一句（票 22）。比缺口淡一档：缺口要抢眼，做法是参考。 */
+.depFix {
+  margin-top: 6px;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  line-height: 1.5;
+  color: var(--v1-dim);
+}
+
+.popFoot { display: flex; gap: 6px; padding: 0 10px 10px; }
+.popFoot .toolBtn { flex: 1 1 0; justify-content: center; }
+
+
+/* ── 可用变量清单（点一下复制变量名）─────────────── */
+.varList {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 5px;
+}
+.varChip {
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  line-height: 1.3;
+  padding: 2px 6px;
+  border-radius: 4px;
+  border: 1px solid color-mix(in srgb, var(--v1-accent) 30%, transparent);
+  background: color-mix(in srgb, var(--v1-accent) 10%, transparent);
+  color: var(--v1-accent);
+  cursor: pointer;
+}
+.varChip:hover {
+  border-color: color-mix(in srgb, var(--v1-accent) 70%, transparent);
+  background: color-mix(in srgb, var(--v1-accent) 20%, transparent);
+}
+
+.inlineEditor {
+  margin-top: 6px;
+  border-top: 1px solid var(--v1-line);
+  padding-top: 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* 展开后的高度上限**走变量**（用户 2026-10-11 要求「节点展开高度也增加到设置中」）。
+   * 真值由画布容器下发（见 canvas-tokens.module.css 的 `--ewb-editor-h`），
+   * 没设过偏好时用默认 220px。
+   *
+   * ⚠️ **这一层不再自己滚动**（2026-10-11 改）：用户要求
+   * 「失败处理应该独立层贴底」，所以要留出贴底那块不滚动的高度。
+   * 滚动改由内部的 `.block` 承担 —— 它 `flex: 1` 吃掉剩余高度。 */
+  max-height: var(--ewb-editor-h, 220px);
+  overflow: hidden;
+}
+
+/* 编辑体里「可滚动的那一块」：说明 / 可用变量 / 参数。
+ * `min-height: 0` 是必需的 —— flex 子项的收缩下限默认是内容高度，
+ * 不写这行内部 `overflow-y` 不生效（整块会撑破父级，本项目踩过）。 */
+.block {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* ⚠️ **块里的子项一律不许被压缩**（2026-10-11 修的真 BUG）。
+ *
+ * 症状（用户报的）：「节点下面的内容多的时候，节点说明的文字展开后会被压缩到
+ * 看不到，**且没有滚动条**」。
+ *
+ * 真因：`.detailBlock` 自己带了 `overflow: hidden`（为圆角裁掉内容），
+ * 而 CSS flexbox 有一条规矩 —— **当 flex 子项的 `overflow` 不是 `visible` 时，
+ * 它的「自动最小尺寸」算作 0**。于是它成了唯一**可被压扁**的子项：
+ * 参数块（没有 overflow，最小尺寸＝内容高度）不肯缩，剩下的账全算到说明块头上，
+ * 它就被压到 0 高。
+ *
+ * 而它一被压扁，内容就**永远不溢出** → `.block` 的滚动条**永远不出现**。
+ * 这两个症状是**同一个原因**，不是两个问题（用户说得对：问题在显示，不是未知）。
+ *
+ * 修法：滚动容器里的子项取内容高度、不参与收缩（`flex: 0 0 auto`），
+ * 于是内容超出时**真正会溢出**，`.block` 自然出滚动条。
+ *
+ * 用 `> *` 而不是只点 `.detailBlock`：**任何**将来加进这块的子项都不该被压扁 ——
+ * 这类「子项被压没」的坑是按元素一个个踩的，一次定规则省掉后面几次。 */
+.block > * { flex: 0 0 auto; }
+
+/* 贴底那一层：失败处理 + 重试。
+ * 它不参与滚动（在 `.block` 之外），所以滚参数时始终看得见。
+ * 上面一条细线把它与参数区分开 —— 它是对**整个节点**的策略，不是某个参数。
+ *
+ * ⚠️ **必须能折行**（2026-10-19 由前端开发者用真 Chromium 量出来的真 BUG）：
+ * 原来只有 `display: flex; gap: 6px`、**没有 `flex-wrap`**。
+ * 而 `.seg`（三选一按钮组）是 `flex: 1 1 auto`，它把剩余宽度吃掉后，
+ * 后面那些**定宽**子项（重试的两个输入框 + 两段说明文字）就直接排到卡片**外面**
+ * —— 节点卡没有 `overflow: hidden`，所以不是被裁掉，是**真的糊在相邻节点上**。
+ * 实测：节点宽 300px、footBar 可见 284px、内容却要 552px（溢出 268px）。
+ *
+ * ## 为什么是「折行 + 收窄输入框」而不是别的
+ *
+ * 2026-10-19 用真 Chrome（本机 chrome.exe）实测三种写法，容器 284px：
+ *
+ * | 写法 | 溢出 | 高 | 三选一按钮宽 |
+ * |---|---|---|---|
+ * | 只有 `flex-wrap`（输入框仍 4.5/5.5rem） | 0 | 98px（三排） | 71px |
+ * | **`flex-wrap` + 输入框 3.2rem（就是现在这个）** | **0** | **65px（两排）** | **71px** |
+ *
+ * ⚠️ 实测**纠正一处说法**：任务书里写「B 方案 66px、仍是一排」——那个 66px
+ * 其实是**两排**（一排最多 33px：按钮 26 / 输入框 27 + 上边距 6）。
+ * 284px 宽度下 B 与「拆成独立一行」高度完全一样（都是 65px），
+ * 差别只在**更宽的节点上 B 会自己并回一排**，所以选 B 更灵活。
+ *
+ * 三选一按钮 71px 放得下「停止流程 / 继续跑 / 走失败分支」，没有变成每行一个字。 */
+.footBar {
+  flex: 0 0 auto;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--v1-line);
+}
+.footLabel {
+  flex: 0 0 auto;
+  font-size: var(--text-ewb-label);
+  letter-spacing: 0.08em;
+  color: var(--v1-dim);
+}
+/* 贴底那层的三选一控件占满右侧剩余宽度。 */
+.footBar .seg { flex: 1 1 auto; }
+
+/* 重试的两个输入框（`.footBar` 里那两个数字框）。
+ *
+ * ⚠️ **必须写死宽度且 `flex: 0 0 auto`**：
+ *   · `.input` 本身是 `width: 100%`（给竖排表单用的），放进 flex 行会各占满、
+ *     把整行撑爆 —— 这正是 268px 溢出的成因之一；
+ *   · `3.2rem`（≈51px）实测装得下 `0`~`10` 与 `0`~`60000`。
+ *
+ * 2026-10-19 真 Chrome 实测（284px 容器）：51px 时整行不溢出、高 65px。 */
+.footBar .retryNum {
+  width: 3.2rem;
+  flex: 0 0 auto;
+}
+
+/* ── 实例级「这个节点」：名字输入 + 备注（用户 2026-10-12 要求）──────────
+ * 为什么这两栏要存在：类型说明回答的是「这类节点干什么」，
+ * 而用户真正会忘的是「**我在这里为什么用它**」——
+ * 后者没有地方可写，时间一久就彻底不知道当初为什么这么连。 */
+.identInput, .identNote {
+  width: 100%;
+  background: var(--v1-item, rgba(255, 255, 255, 0.06));
+  color: var(--v1-ink);
+  border: 1px solid var(--v1-line);
+  border-radius: var(--rd-sm);
+  padding: 5px 8px;
+  font-size: var(--text-ewb-label);
+  font-family: inherit;
+  box-sizing: border-box;
+}
+.identNote { resize: vertical; min-height: 44px; line-height: 1.45; }
+.identInput:focus, .identNote:focus { outline: none; border-color: var(--v1-accent); }
+.identHint {
+  padding: 3px 1px 0;
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+  opacity: 0.85;
+  line-height: 1.4;
+}
+
+
+/* ══ 属性表单（按 n8n 规范重做，2026-10-08）═══════════════
+ * 要点：参数说明**常显**在输入框下方（不藏悬停）；节点详细说明独立成块；
+ * 节点级提示按 info/warning/danger 分级配色。 */
+
+/* 参数块 */
+.param {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin-bottom: 9px;
+}
+
+.paramHead {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+
+.paramLabel {
+  font-size: var(--text-ewb-meta);
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  color: var(--v1-ink);
+}
+
+.paramReq {
+  font-size: var(--text-ewb-label);
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--c-danger-bg);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+.paramAdv {
+  font-size: var(--text-ewb-label);
+  padding: 0 4px;
+  border-radius: 4px;
+  background: var(--dsw-alias-interactive-bg-active);
+  color: var(--v1-dim);
+}
+
+/* 参数说明（常显） */
+.paramHint {
+  font-size: var(--text-ewb-meta);
+  line-height: 1.55;
+  color: var(--v1-dim);
+}
+
+/* ══ 结构化条件表（`flow.if` 的「选变量 + 比较符 + 值」）════════════════
+ *
+ * 用户 2026-10-19：「照 Dify 做成『选变量 + 比较符 + 值』的结构化条件」。
+ *
+ * 一行 = 三个下拉 + 一个输入 + 一个删按钮。节点面板本身就窄，
+ * 所以这里**必须允许换行**：`flex-wrap` 一开，宽的时候一排显示、
+ * 窄的时候自动折成两排，而不是把内容挤出节点边界
+ * （这类「内容比容器宽」的错本项目踩过：溢出不会报错，只是看不见）。
+ */
+.ifRow {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+/* 每个控件默认**可以缩**（`min-width: 0` 是必需的：flex 子项的自动最小尺寸
+ * 等于内容宽度，不给 0 的话长选项名会把整排撑开）。 */
+.ifRow > select,
+.ifRow > input {
+  flex: 1 1 auto;
+  min-width: 0;
+  width: auto;
+}
+/* 「按什么类型比」是次要信息，不参与抢宽度。 */
+.ifRow > select.ifType {
+  flex: 0 0 auto;
+  width: 4.5em;
+}
+/* 删这一条。放在行尾、尺寸固定，避免换行后跟内容挤在一起。 */
+.ifDel {
+  flex: 0 0 auto;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--v1-dim);
+  font-family: inherit;
+  font-size: var(--text-ewb-meta);
+  line-height: 1;
+  cursor: pointer;
+}
+.ifDel:hover {
+  border-color: var(--v1-line);
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--v1-ink);
+}
+
+/* 控件 */
+.select,
+.textarea {
+  width: 100%;
+  padding: 4px 7px;
+  border-radius: 6px;
+  border: 1px solid var(--v1-line);
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--v1-ink);
+  font-family: inherit;
+  font-size: var(--text-ewb-meta);
+  outline: none;
+}
+
+/* ══ 下拉里的**选项**（用户 2026-10-14 报的「暗色下选项不可见」）══════════
+ *
+ * 用户原话：「在黑色主题下，节点中的选项栏不可见（选项栏的底色和文字颜色都是
+ * 白色），被选中的才是蓝底黑字可见的，未选中项目视觉上看不到。」
+ *
+ * ## 为什么必须显式给 option 设色（实测出来的）
+ *
+ * `<select>` 的**弹层**在 Windows 上由系统画（原生控件），不跟普通 CSS 走 ——
+ * 但 Chromium 对 `option` 上的 `background-color` / `color` **是认的**（真机实测）。
+ * 所以能做的是「把两个值都明确写出来」，而不是依赖继承。
+ *
+ * 那条**「不写就出事」的证据**（真 Chromium + 产物真 CSS 量「选项底色/文字的对比度」）：
+ *
+ *   · 现状：`option` 的计算值是 `background: rgba(0,0,0,0)`（透明）+ 继承到的文字色。
+ *     暗色下透明底叠在深色弹层上 → 17:1，**暗色其实是能看的**；
+ *   · **亮色下就崩**：透明底 + `#0f1115` 深色文字落在**白色**弹层上 → **1.11:1**。
+ *
+ * 也就是说：**不写 option 颜色时，好坏完全取决于系统弹层的底色**，
+ * 亮暗两边总有一边踩空。写死两边才两边都对。
+ *
+ * ## 修法与验证
+ *
+ * 用**主题令牌**（不是写死色值）→ 亮暗各自跟随：
+ *   暗色：底 `#232324` / 字 `#e6e8ec` → 实测对比度 **12.80:1**
+ *   亮色：底 `#ffffff` / 字 `#0f1115` → 实测对比度 **18.90:1**
+ * 两边都远高于 WCAG AA 的 4.5:1。
+ *
+ * ## ⚠️ 局限（说清楚，别当它完美）
+ *
+ *   1. **只对「认这条 CSS」的浏览器有效**。Windows 上部分场景（尤其是
+ *      系统级深色模式 + 非 Chromium 内核）里，弹层完全由系统画，
+ *      我们的 `option` 规则**会被忽略** —— 那时显示什么样由系统决定，我们管不到。
+ *      这是原生 `<select>` 的固有边界，不是这段 CSS 的缺陷。
+ *   2. 要**彻底**掌控就得换掉原生 select（自绘下拉，像 dsh 的 `Menu` 那样）。
+ *      代价：一个自绘下拉要自己处理键盘、无障碍、定位、滚动 ——
+ *      为一个「系统弹层偶尔不听话」的问题换掉全部下拉，不划算。
+ *      所以**先保留原生 select**：它天生无障碍、天生跟键盘走。
+ *   3. 这条修法**不改功能**，只改颜色 —— 所以不影响任何逻辑测试。
+ */
+.select option,
+.select optgroup {
+  background-color: var(--dsw-alias-bg-layer-1);
+  color: var(--dsw-alias-label-primary);
+}
+/* 选中/悬停那一项：用强调色标出来（原来系统给的蓝底黑字，在暗色下太扎眼且与主题无关）。 */
+.select option:checked {
+  background-color: color-mix(in srgb, var(--dsw-alias-brand-primary) 35%, var(--dsw-alias-bg-layer-1));
+  color: var(--dsw-alias-label-primary);
+}
+
+.select:focus,
+.textarea:focus {
+  border-color: var(--v1-accent);
+}
+
+.textarea {
+  resize: vertical;
+  min-height: 54px;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  line-height: 1.5;
+}
+
+.ctlRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.ctlBoolText {
+  font-size: var(--text-ewb-label);
+  color: var(--v1-dim);
+}
+
+.unit {
+  font-size: var(--text-ewb-label);
+  color: var(--v1-dim);
+  flex: 0 0 auto;
+}
+
+/* 高级参数折叠按钮 */
+.advToggle {
+  align-self: flex-start;
+  margin: 2px 0 6px;
+  padding: 3px 8px;
+  border-radius: 6px;
+  border: 1px dashed var(--v1-line);
+  background: transparent;
+  color: var(--v1-dim);
+  font-family: inherit;
+  font-size: var(--text-ewb-meta);
+  cursor: pointer;
+}
+
+.advToggle:hover {
+  border-color: var(--v1-accent);
+  color: var(--v1-ink);
+}
+
+/* 节点详细说明块（Node-RED 五段式；「这个节点在做什么」与「能引用哪些变量」
+ * 都用这个类，所以两者之间的间距由下面这一条统一决定）。 */
+.detailBlock {
+  /* ⚠️ 从 10px 收到 **1px**（用户 2026-10-11：「两个章节……不应该有间隔，
+   * 或者间隔非常小，1PX？」）。
+   * 这两个都是**收起的标题条**，堆在一起时像一组可展开的行；
+   * 10px 的间距会让它们读成两个不相干的块。 */
+  margin-bottom: 1px;
+  border: 1px solid var(--v1-line);
+  border-radius: 8px;
+  background: var(--dsw-alias-interactive-bg-hover);
+  overflow: hidden;
+}
+
+.detailSum {
+  padding: 5px 8px;
+  cursor: pointer;
+  font-size: var(--text-ewb-label);
+  letter-spacing: 0.08em;
+  color: var(--v1-dim);
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
+.detailBody {
+  padding: 7px 9px 9px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.detailRow {
+  display: flex;
+  gap: 8px;
+  font-size: var(--text-ewb-label);
+  line-height: 1.55;
+}
+
+.detailKey {
+  flex: 0 0 42px;
+  color: color-mix(in srgb, var(--v1-accent) 85%, transparent);
+  font-weight: 600;
+}
+
+.detailVal {
+  flex: 1 1 auto;
+  min-width: 0;
+  color: var(--v1-dim);
+}
+
+.detailLink {
+  font-size: var(--text-ewb-label);
+  color: var(--v1-accent);
+  text-decoration: none;
+}
+
+/* 节点级提示（三档配色，照 n8n hints） */
+.hint {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 7px;
+  padding: 5px 8px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  font-size: var(--text-ewb-meta);
+  line-height: 1.5;
+}
+
+.hintMark {
+  flex: 0 0 auto;
+  font-weight: 700;
+}
+
+.hint_info {
+  background: color-mix(in srgb, var(--v1-accent) 10%, transparent);
+  border-color: color-mix(in srgb, var(--v1-accent) 25%, transparent);
+  color: var(--v1-ink);
+}
+
+.hint_warning {
+  background: var(--c-warning-bg);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 28%, transparent);
+  color: rgba(255, 226, 160, 0.92);
+}
+
+.hint_danger {
+  background: var(--c-danger-bg);
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 28%, transparent);
+  color: rgba(255, 180, 175, 0.92);
+}

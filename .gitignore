@@ -1,0 +1,33 @@
+# 依赖与临时产物
+node_modules/
+*.log
+build-out.txt
+*.bak
+*.bak-*
+# 验证脚本的产物备份（把 lib/*.js 备份出来改坏、验完还原；跑完必须删）
+# 加了这条之后即使忘了删也不会误提交（2026-10-12 误提交过一次）。
+*.vfybak
+
+# 清理前的临时备份（用完即删，不入库）
+_backup-before-cleanup/
+
+# 团队插件（@nanmicoder/dsh-agent-teams）的运行时状态：
+# team.json 与各成员的 inbox/*.jsonl。它是**会话状态**，不是源码 ——
+# 每跑一次任务就变一次（705 KB，最近 10 个提交里 2 个动了它），
+# 提交它只会让 diff 里塞满别人的对话记录。
+# ⚠️ 它曾经被误提交过 8 个文件（2026-10-20 补这条时才发现）。
+.agent-teams/
+
+# 注意：lib/ 故意入库——桌面端直接加载 lib/index.js 与 lib/client.js，
+# 仓库需自包含可运行（与 dsh-todo-board 的处理一致）。
+
+# �ڵ��ܳ�����ʾ�����sys.fs.write ��Ĭ�ϲ���ָ�������һ�ξ����ɣ�
+ecom-workbench-out/
+
+# ── 技能票系统的工作目录 ──────────────────────────────────────
+# .scratch/：dsh-mattpocock-skills-deck 的本地 Markdown 后端在这里放票与规格。
+# 执行期台账，不是知识沉淀；成型的结论仍写进 plans/ 与 docs/。
+# 路径由插件代码写死，改不了。
+.scratch/
+# 插件「目录可写」探测留下的临时文件（每次环境检查都会重建）
+.dsh-write-probe

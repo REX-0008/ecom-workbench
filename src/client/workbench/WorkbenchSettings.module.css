@@ -1,0 +1,313 @@
+/* 工作台设置的样式（2026-10-23 从「挤在窄抽屉里」改成独立宽面板）。
+ *
+ * ## 为什么要单独一份，不复用 `workflow-canvas.module.css`
+ *
+ * 那份里的 `.drawer` 是**画布设置**的抽屉：宽 `min(340px, 80%)`，
+ * 内容全是滑块与小按钮，340 足够。而工作台设置里现在住着**模型清单**——
+ * 每行右边有两个动作按钮（设为默认 / 加入备选）。340px 装不下：
+ * 模型名一长，两个按钮就被挤到可视区外，点不到（用户 m02240 报的正是这个）。
+ *
+ * 两份的**用途不同**，所以类也分开：画布抽屉保持窄（它就该窄），
+ * 工作台设置这个宽（`max-width: 720px`，照 dsh 设置页那一套）。
+ *
+ * ## 布局照 dsh 的 `ui-settings-models`
+ *
+ * 参考 `refs/deepseek-harness@62962ee4/packages/client/ui-settings-models/src/client/ModelsSection.module.css`：
+ *
+ * | dsh 的做法 | 这里的做法 | 为什么 |
+ * | --- | --- | --- |
+ * | 整节 `max-width: 720px` | `.panel` 同样 720 | 一行里放得下「长名字 + 两个按钮」 |
+ * | 每个 provider 一张**纵向卡片**（`.rowCard`，column + gap 12） | `.card` 同样纵向 | 卡片里上下分区，动作不会与名字抢同一行 |
+ * | 卡片用 `--dsw-alias-settings-card-stroke/fill` | 同 | 主题跟随 dsh，不自造底色 |
+ * | 动作按钮在卡片头右侧或底部 | 模型行的动作**留在行内右端**，但行内的名字可以收缩 | 见下面 `.rowName` |
+ *
+ * ## 防溢出的关键不是「变宽」，是「谁能被压」
+ *
+ * 只把面板加宽是治标：模型名足够长时照样溢出。真正的修法是
+ * **让名字那一格可收缩、动作那一格不可收缩**：
+ *
+ *   · `.rowName { min-width: 0; flex: 1 1 auto; }` + `truncate` → 名字截断；
+ *   · `.rowActions { flex: 0 0 auto; }` → 两个按钮永远在。
+ *
+ * 这条与画布那边 `.block > * { flex: 0 0 auto }` 是同一个坑的两面
+ * （**flex 子项能不能被压缩取决于 `min-width` / `overflow`**），只是这里反过来用。
+ */
+
+/* ── 面板外壳：**已删**（票 69，2026-10-29）─────────────────
+ *
+ * 这里原来有五个类：`.panel` / `.panelHead` / `.panelTitle` /
+ * `.panelClose` / `.panelBody`。它们全部为“从右侧滑出的工作台设置抽屉”而存在。
+ *
+ * ## 为什么能删
+ *
+ * 票 66 已经把那个抽屉删了（齿轮、`wsOpen`、`WorkspaceSettings` 那个函数都没了），
+ * 设置升级成了侧栏里的「配置」**板块**。于是这五个类从票 66 起就没有任何源码引用了。
+ *
+ * 删之前核过（两道）：
+ *   ① `grep -rn "css.panel\|ws.panel" src/` → 零命中；
+ *   ② 本文件里 `import` 它的只有 CSS Modules 的全局化名字，没有模板字符串拼接。
+ *
+ * ⚠️ `tests/dom-render.mjs` 里有一条判据验的就是“这批类没人用”——
+ * 删完之后它不会变红（它验的是“没有源码引用”，现在连定义都没了）。
+ *
+ * 下面的 `.section` / `.sectionTitle` / `.note` / `.modelName` / `.row` /
+ * `.rowLabel` / `.rowActions` / `.btn` / `.btnOn` / `.input` / `.card` … **都还在用**，
+ * 不要跟着一起删。 */
+
+/* ── 一节（模型 / ComfyUI / 其它 三格共用这个外壳）────────────────
+ *
+ * ## 2026-10-30（票 02，用户第 5 条）：排版统一 + 修掉「展开后内容叠加」
+ *
+ * 用户原话：「设置板块连基本的排版规则都没有，每个内容的标题文字大小都不统一，
+ * 其他的每一个分栏有横线，模型和comfyui没有。试着抄 dsh 的设置板块，
+ * 不抄他的 tab 切换，抄他每个 tab 内的内容排版样式、规则。」
+ *
+ * 三条落在这一个类上，各自修一个毛病：
+ *
+ * | 写在 `.section` 上的 | 修什么 |
+ * | --- | --- |
+ * | `flex: 0 0 auto` | **修叠加**（下面详述） |
+ * | `border-top`（每一节都有） | 「模型」「ComfyUI」两格也有线了，且第一块也有 |
+ * | 配合 `.sectionTitle` 一个字号 | 标题不再三档并存 |
+ *
+ * ## ★ 叠加的真因：滚动容器里的 flex 子项**默认可压缩**
+ *
+ * `ConfigBoard` 的根是 `flex min-h-0 flex-1 flex-col overflow-y-auto`
+ * —— 一个**高度确定**的纵向 flex 容器 + 滚动。
+ *
+ * flex 子项的 `flex-shrink` 默认是 `1`：内容总高超过容器时，浏览器**先把子项压扁**
+ * 而不是让容器滚。压扁之后子项自己的内容从盒子里**溢出来画到邻居上面** ——
+ * 因为溢出默认可见（`overflow: visible`）。
+ *
+ * 这就是「dsh 模型目录一展开，内容就盖到模型清单上」的机制：展开让总高变大
+ * → 上面两块被压得更扁 → 它们的内容溢出来盖住展开出来的东西。
+ *
+ * **「展开」只是触发条件，不是原因。** 所以修的**不是** `<details>`，
+ * 而是让每一节都不许被压：`flex: 0 0 auto`。高度不够时轮到容器滚
+ * （它本来就有 `overflow-y: auto`）。
+ *
+ * ⚠️ 这条**必须可测**：`tests/settings-layout.mjs` 断言 `.section` 里有
+ * `flex: 0 0 auto`（或等价的 `flex-shrink: 0`）。jsdom 不排版，
+ * 「视觉上不叠」只能靠这条声明来钉 —— 删掉它那条立刻红。
+ *
+ * ## 为什么横线从 `.section + .section` 改成每一节都有
+ *
+ * 原来只在**相邻**两节之间画线，于是每个 tab 的**第一块**没上边线、
+ * 而中间的块有 —— 用户对比三个 tab 时看到的规则不一致，这就是他说的「不统一」。
+ * 现在每一节都带一条，三个 tab 的起手式一样。
+ *
+ * ⚠️ **不做成 tab**（用户 2026-10-23 明说「暂时不分tab」）。这里全是纵向排列。 */
+
+.section {
+  min-width: 0;
+  /* ★ 见上面「叠加的真因」：不许被 flex 压扁，否则内容会溢出盖住邻居。 */
+  flex: 0 0 auto;
+  padding-top: 18px;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+/* 节与节之间的**额外**留白（上边线在 `.section` 里，这里只管间距）。 */
+.section + .section { margin-top: 18px; }
+
+/* 第一节不加额外间距，但**保留**上边线 —— 三个 tab 的起手式必须一致。 */
+.section:first-child { margin-top: 0; }
+
+.sectionTitle {
+  margin-bottom: 10px;
+  font-size: var(--text-ewb-body);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* ── 块标题：**不新增类**，统一用 `.sectionTitle`（票 02，2026-10-30）
+ *
+ * 用户抱怨「每个内容的标题文字大小都不统一」。查下来三档是：
+ *
+ * | 谁 | 原来用的 |
+ * | --- | --- |
+ * | 竖向几节的标题（dsh 模型目录 / 提醒 / 布局 / 浏览器） | `.sectionTitle`（`--text-ewb-body`） |
+ * | 三处**横向一行**的头（默认模型 / 模型清单 / ComfyUI 渠道） | Tailwind `text-ewb-caption uppercase` |
+ * | 节内副标题（已加进清单 …） | `.subTitle`（`--text-ewb-meta`） |
+ *
+ * 现在前两档合并成 `.sectionTitle` 一个 token（第三档是**副标题**，不是同级，
+ * 它保持小一档是对的 —— 层级本来就有两档：节 → 副标题 → 正文）。
+ *
+ * ## 为什么没有新写一个 `.blockTitle`
+ *
+ * 本来要写一个（横排的头不该带 10px 底边距），但 **CSS 类名必须是打包产物里
+ * 已经存在的** —— `tests/css-refs.mjs` 拿 `lib/client.js` 里的类名→hash 映射表核对，
+ * 新加的类在重新打包之前**一定**查不到，那条会红。而本票不许跑 bundle。
+ *
+ * 所以沿用 `.sectionTitle`，横排那三处在行内用 `marginBottom: 0` 抹掉底边距
+ * （见三个组件里的注释）。**保留一条原则**：字号只来自 `.sectionTitle` 一个地方。
+ */
+/* 节内的**副标题**（如「备选名单（3 个）」「预警节点提醒」）：
+ * 比节标题小一档，与正文区分，但不再靠内联 `marginTop` 制造间距 —— 统一在这里。 */
+.subTitle {
+  margin-top: 14px;
+  margin-bottom: 6px;
+  font-size: var(--text-ewb-meta);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* ⚠️ 这里曾经有一条 `.browserSection > div > div:first-child { … }`，用意是把
+ * 「浏览器」那一节的标题拉到与「模型」「提醒」同一档字号。
+ *
+ * **2026-10-23 已删除**，改成 `BrowserSettings` 的 `titleClassName` props
+ * （`WorkspaceSettings.tsx` 传 `ws.sectionTitle` 进去）。删的理由：
+ * 那种写法是**拿 DOM 结构当契约** —— `BrowserSettings` 里只要多包一层，
+ * 那条规则就**静默失效**（界面上标题小一号，而测试若只比「有没有标题」仍然绿）。
+ *
+ * 删干净，不留两套 —— 两套都在时，改一个地方会一半生效一半不生效，更难查。 */
+
+/* 一行「标签 + 控件」：与画布设置那套同一尺度。 */
+.row { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; padding: 5px 0; }
+
+.rowLabel {
+  flex: 0 0 auto;
+  min-width: 96px;
+  font-size: var(--text-ewb-meta);
+  color: var(--dsw-alias-label-primary);
+}
+
+.note {
+  padding: 4px 0;
+  font-size: var(--text-ewb-caption);
+  line-height: 1.55;
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* ── 卡片（模型的 provider、模型行）──────────────────────────────── */
+
+/* 照 dsh 的 `.rowCard`：纵向、0.5px 描边 + 专用底色。
+ * `min-width: 0` 同样是为内部的收缩链留口子。 */
+.card {
+  box-sizing: border-box;
+  min-width: 0;
+  border: 0.5px solid var(--dsw-alias-settings-card-stroke);
+  background: var(--dsw-alias-settings-card-fill);
+  border-radius: var(--radius-card);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.card + .card { margin-top: 8px; }
+
+.cardHead {
+  display: flex; align-items: center; gap: 8px;
+  min-width: 0;
+}
+
+.cardName {
+  flex: 1 1 auto; min-width: 0;
+  font-size: var(--text-ewb-meta);
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+.cardCount {
+  flex: 0 0 auto;
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-tertiary);
+}
+
+/* 一个模型一行。**名字可压缩、动作不可压缩** —— 这是不溢出的真正原因。 */
+.modelRow {
+  display: flex; align-items: center; gap: 8px;
+  min-width: 0;
+  padding: 4px 0;
+  border-top: 1px solid var(--dsw-alias-border-l2);
+}
+
+.modelName {
+  flex: 1 1 auto;
+  min-width: 0;              /* ← 缺这一行，长名字会把两个按钮挤出可视区 */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: var(--text-ewb-meta);
+  color: var(--dsw-alias-label-primary);
+}
+
+.modelDesc {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-tertiary);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+/* 动作区：`flex: 0 0 auto` + `nowrap` = 永远不换行、不被压。 */
+.rowActions {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+
+/* ── 按钮：两种（次要 / 选中）──────────────────────────────────── */
+
+.btn {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--radius-ctl);
+  background: transparent;
+  color: var(--dsw-alias-label-secondary);
+  font-family: inherit;
+  font-size: var(--text-ewb-label);
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover:not(:disabled) {
+  background: var(--dsw-alias-interactive-bg-hover);
+  color: var(--dsw-alias-label-primary);
+}
+.btn:disabled { opacity: 0.45; cursor: default; }
+
+/* 选中态：强调色只做「选中」与「主操作」两件事（见 AGENTS.md 的颜色纪律）。 */
+.btnOn {
+  box-sizing: border-box;
+  flex: 0 0 auto;
+  display: inline-flex; align-items: center; justify-content: center;
+  height: 26px;
+  padding: 0 9px;
+  border: 1px solid var(--ewb-accent-line);
+  border-radius: var(--radius-ctl);
+  background: var(--ewb-accent-soft);
+  color: var(--ewb-accent);
+  font-family: inherit;
+  font-size: var(--text-ewb-label);
+  line-height: 1;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btnOn:disabled { opacity: 0.45; cursor: default; }
+
+/* 输入框（模型筛选）。内凹：顶边暗、底边亮（深度规则「光从上方来」）。 */
+.input {
+  box-sizing: border-box;
+  flex: 1 1 auto;
+  min-width: 0;
+  height: 28px;
+  padding: 0 8px;
+  border: 1px solid var(--dsw-alias-border-l2);
+  border-radius: var(--radius-ctl);
+  background: transparent;
+  color: var(--dsw-alias-label-primary);
+  font-family: inherit;
+  font-size: var(--text-ewb-meta);
+}
+.input::placeholder { color: var(--dsw-alias-label-tertiary); }

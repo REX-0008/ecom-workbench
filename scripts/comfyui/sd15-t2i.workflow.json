@@ -1,0 +1,143 @@
+{
+  "1": {
+    "class_type": "SaveImage",
+    "inputs": {
+      "images": [
+        "5",
+        0
+      ],
+      "filename_prefix": "ewb"
+    },
+    "_meta": {
+      "title": "output_image"
+    }
+  },
+  "3": {
+    "class_type": "KSampler",
+    "inputs": {
+      "seed": [
+        "10",
+        0
+      ],
+      "steps": 20,
+      "cfg": 7,
+      "sampler_name": "dpmpp_2m",
+      "scheduler": "karras",
+      "denoise": 1,
+      "model": [
+        "4",
+        0
+      ],
+      "positive": [
+        "6",
+        0
+      ],
+      "negative": [
+        "7",
+        0
+      ],
+      "latent_image": [
+        "11",
+        0
+      ]
+    },
+    "_meta": {
+      "title": "K 采样器"
+    }
+  },
+  "4": {
+    "class_type": "CheckpointLoaderSimple",
+    "inputs": {
+      "ckpt_name": "anything-v5-PrtRE.safetensors"
+    },
+    "_meta": {
+      "title": "加载模型"
+    }
+  },
+  "5": {
+    "class_type": "VAEDecode",
+    "inputs": {
+      "samples": [
+        "3",
+        0
+      ],
+      "vae": [
+        "4",
+        2
+      ]
+    },
+    "_meta": {
+      "title": "VAE 解码"
+    }
+  },
+  "6": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "masterpiece, best quality",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "prompt"
+    }
+  },
+  "7": {
+    "class_type": "CLIPTextEncode",
+    "inputs": {
+      "text": "lowres, bad anatomy, worst quality",
+      "clip": [
+        "4",
+        1
+      ]
+    },
+    "_meta": {
+      "title": "negative"
+    }
+  },
+  "8": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 512
+    },
+    "_meta": {
+      "title": "width"
+    }
+  },
+  "9": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 512
+    },
+    "_meta": {
+      "title": "height"
+    }
+  },
+  "10": {
+    "class_type": "PrimitiveInt",
+    "inputs": {
+      "value": 12345
+    },
+    "_meta": {
+      "title": "seed"
+    }
+  },
+  "11": {
+    "class_type": "EmptyLatentImage",
+    "inputs": {
+      "width": [
+        "8",
+        0
+      ],
+      "height": [
+        "9",
+        0
+      ],
+      "batch_size": 1
+    },
+    "_meta": {
+      "title": "空 Latent"
+    }
+  }
+}

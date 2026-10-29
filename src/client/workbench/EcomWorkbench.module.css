@@ -1,0 +1,2735 @@
+/* 电商工作台主界面样式（CSS Modules；token 全用官方 --dsw-*）。
+ *
+ * 版式照 FounderOS-DEMO：左栏一层平铺导航 + 右侧内容区（板块标题 → 细分隔线 → tab 条 → 内容）。
+ * 与 FounderOS 的差异：它用 Tailwind 的 os.* 类，这里全部翻译成 CSS 变量；
+ * 对应关系：bg-os-bg2→bg-layer-1 · border-os-border→border-l2 · text-os-text→label-primary
+ *   text-os-muted→label-secondary · text-os-dim→label-tertiary
+ *   --accent-soft / --accent-line / text-os-accent → brand-primary 的 8% / 25% 混色
+ * 右列的 left/top/width 仍由 EcomWorkbench 实测对话列后写入的 --ewb-* 驱动（不改挤压机制）。
+ */
+
+/* ── 右列根（叠加在对话列内） ───────────────────────────────── */
+.column {
+  /* 字号令牌（规则见 ../../../设计计划.md 第三、四节）：
+   * 正文类跟随用户字号设置；密集次级文本保持 dsh 固定档。 */
+  position: fixed;
+  left: var(--ewb-left, 60%);
+  top: var(--ewb-top, 0px);
+  bottom: 0;
+  width: var(--ewb-colw, 40%);
+  z-index: 20;
+  display: flex;
+  min-height: 0;
+  /* 注意：不能用 overflow:hidden —— 会裁掉左边缘的拖拽把手 */
+  /* ⚠️ **这一层是「画布底下面那层」**，2026-10-17 从 `bg-base` 改成
+   * `--ewb-canvas-underglow`（比画布底深/浅一档，亮暗自动跟随）。
+   *
+   * 为什么必须改：原来它与画布底**同色**（都是 bg-base）——
+   * 于是「画布背景调成 40% 透明」时透出来还是同一个颜色，
+   * 用户看到的就是「改了没反应」（m02340）。底下这层与画布底有色差，
+   * 那个滑块才**看得见**。
+   *
+   * ⚠️ 令牌的定义与整套层级说明在 `styles/tailwind.css` 的
+   * 「工作台『面』的层级」一段，改之前先读那段。 */
+  background: var(--ewb-canvas-underglow, var(--dsw-alias-bg-base));
+  border-left: 1px solid var(--dsw-alias-border-l2);
+}
+
+/* 左边缘拖拽把手：拖宽/拖窄整个工作台；双击复位默认宽度。
+ * 分两层：外层 6px 是「热区」（好抓，透明），内层 ::before 2px 是「视觉线」（平时极淡，hover/拖动时变亮）。
+ * 业界常见做法是热区 4-8px、视觉线 1-2px —— 热区大好抓，线细则不干扰看内容。 */
+.dragHandle {
+  position: absolute;
+  left: -3px;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 5;
+  touch-action: none;
+  background: transparent;
+}
+
+/* 视觉线：2px 宽，居中在热区里 */
+.dragHandle::before {
+  content: '';
+  position: absolute;
+  left: 2px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: transparent;
+  transition: background 120ms ease;
+}
+
+/* 悬停/拖动时才显示这条 2px 线（平时完全隐形，不干扰） */
+.dragHandle:hover::before,
+.dragHandle:active::before {
+  background: var(--dsw-alias-brand-primary);
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+/* 折叠按钮（照 FounderOS：h-7 w-7 = 28px） */
+.collapseBtn {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--dsw-alias-label-tertiary);
+  cursor: pointer;
+}
+.collapseBtn:hover {
+  border-color: var(--dsw-alias-border-l2);
+  color: var(--dsw-alias-label-primary);
+}
+
+
+
+
+/* ── 右侧内容区 ────────────────────────────────────────────── */
+/* 内容区外层：只负责「撑满 + 纵向布局」。
+ * 内边距由内层的 Tailwind 类给（照 FounderOS 的 px-8 pb-16 pt-7）——
+ * 2026-10-08 改：原来这里自带 padding:16px，与内层重复，且比它小很多。 */
+.content {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* 标题块：眉题 + 大标题（照 FounderOS 的 PageHeader 层次，字号按右列宽度收小） */
+
+/* tab 条容器：给 SlidingTabs 量宽度；tab 太窄放不下时横向滚动而不是溢出裁切 */
+.tabs {
+  flex: none;
+  min-width: 0;
+  overflow-x: auto;
+  overflow-y: hidden;
+}
+
+/* 内容留空区：等各板块接入真实实现后替换 */
+/* 内容容器：只放一个子项（画布或占位），所以用**纵向** flex。
+ * 修正（2026-10-08）：原先是横向 flex（默认 row），子项高度靠 align-items:stretch，
+ * 配合子项自己的 min-height:0 会让高度链算错，导致内部滚动失效。
+ *
+ * 2026-10-11 用户指出：「现在的 TAB 内容区默认有一层边框，这层边框不应该存在」。
+ * 下面这行原来是 `border: 1px dashed …` —— 它来自 2026-10-08 的占位期，
+ * 当时内容区是空的，用虚线框标出「这里将来放东西」。
+ * 现在画布/列表/运行历史都接进去了，那层框就纯属**掉进界面里的脚手架**。
+ * 已经删掉，不再补：内容自己负责自己的边（列表有卡片、画布有工具条）。
+ * ⚠️ 同时保留 `border-radius` 与 `overflow: hidden` —— 常驻画布靠这层裁剪，
+ *    去掉会让画布的圆角与滚动溢出到外面。 */
+.body {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  margin: 14px 0 16px;
+  border-radius: 8px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* 常驻画布用绝对定位铺满它（见下方 .pane）——所以这里要给定位基准。 */
+  position: relative;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  letter-spacing: 0.1em;
+  color: var(--dsw-alias-label-caption);
+}
+
+/* 常驻画布的容器（2026-10-11 新增）。
+ *
+ * 画布要「切 tab 不丢状态」，所以它**不能卸载**，只能藏起来——
+ * 藏的方式踩过两轮，下面每一条都是真机验出来的：
+ *
+ * ⚠️ **不能用 `visibility:hidden` 藏**（第一版就是它，真机上压根没藏住）。
+ *    `visibility` 是**能被后代覆盖**的继承属性：React Flow 给每个节点都写了
+ *    **内联** `style="visibility:visible"`（`@xyflow/react` 的 NodeWrapper，
+ *    源码即 `visibility: hasDimensions ? 'visible' : 'hidden'`）。
+ *    内联样式优先级最高 → 后代把自己改回可见 → **节点整片露在外面**。
+ *    → 必须用 **`opacity`**：它作用于**整棵子树**，后代怎么设都覆盖不掉。
+ *
+ * ⚠️ **`pointer-events` 有同一个陷阱，也得用 `!important` 压**：
+ *    React Flow 同样给每个节点写了**内联** `pointer-events: all`，
+ *    会把祖先传下来的 `none` 顶掉（同一份 NodeWrapper 源码）。
+ *    内联样式赢过普通规则，所以这里必须 `!important` —— 这正是 dsh 自己
+ *    藏对话列用的手法（`src/client/index.ts` 里 `visibility: hidden !important`）。
+ *
+ * 其余两条同样不能省：
+ *   - **不能用 `display:none` / 不挂载**：尺寸变 0，React Flow 量到 0×0 就拒绝
+ *     渲染视口（「错误 004」），切回来是一片空白。
+ *   - **必须绝对定位**：留在正常流里时 `flex:1` 即使看不见也占高度，把别的 tab 挤扁。
+ *
+ * 尺寸链要与画布本体的要求一致（min-height:0 + overflow:hidden），
+ * 否则画布内部滚动失效——tests/height-chain.mjs 会盯着这条。 */
+.pane {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* 藏起来：opacity 管「看不见」（后代覆盖不掉）。 */
+  opacity: 0;
+  pointer-events: none;
+}
+/* 藏起来时，把整棵子树的命中测试关掉 —— 必须 !important 才压得住节点上的内联
+ * `pointer-events:all`。写在 `:not([data-active])` 上，激活时这条自然不生效。 */
+.pane:not([data-active]) * { pointer-events: none !important; }
+.pane[data-active] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* ── 常驻板块的格子（2026-10-21 板块注册表）──────────────────────────────
+ *
+ * 与上面的 .pane 是**同一套手法**，只是层次不同：
+ *   · .pane       ：工作流板块**内部**那一格（画布 / 列表 / 运行历史）
+ *   · .boardHost  ：骨架给**整个板块**用的格子（注册时声明 keepMounted 的那些）
+ *
+ * 为什么要两层：板块的常驻是骨架的事（骨架不知道哪个板块是画布），
+ * 画布的常驻是板块自己的事（它知道自己哪一格是画布）。两件事分开写，
+ * 骨架里就不会出现任何板块 id 的字面量。
+ *
+ * ⚠️ 四条坑与上面 .pane 完全一样，别在这里换成 visibility / display：
+ *   ① 只能用 opacity 藏（作用于整棵子树，后代覆盖不掉）；
+ *   ② 不能用 visibility（React Flow 给节点写内联 visibility:visible，会顶掉祖先）；
+ *   ③ pointer-events 要 !important 压住内联的 pointer-events:all；
+ *   ④ 不能用 display:none / 卸载（尺寸变 0 → React Flow 拒绝渲染视口）；
+ *      也不能留在正常流里（flex:1 看不见也占高度，把别的板块挤扁）。
+ *
+ * 高度链：.body（flex 列、overflow:hidden）→ .boardHost（absolute inset:0）
+ * → 板块根（flex:1 + min-height:0）。tests/height-chain.mjs 盯着这条。 */
+.boardHost {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  /* 藏起来：opacity 管「看不见」（后代覆盖不掉）。 */
+  opacity: 0;
+  pointer-events: none;
+}
+/* 藏起来时把整棵子树的命中测试关掉 —— 必须 !important 才压得住节点上的内联
+ * pointer-events:all。写在 :not([data-active]) 上，激活时这条自然不生效。 */
+.boardHost:not([data-active]) * { pointer-events: none !important; }
+.boardHost[data-active] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 占位文案（未接入的板块）：居中留白 */
+.placeholder {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* 入场动画（照 FounderOS 的 om-in：淡入 + 轻微上移） */
+@keyframes ewb-rise {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .head { animation: none; }
+}
+
+/* ── 非画布 tab 的**滚动容器**（2026-10-14，用户 #8）──────────────────────
+ *
+ * 用户原话：「**工作流管理 tab 是不是没有做滚动条，后面的内容看不到**。」
+ * 属实：实测 `.body` 高 390px / `overflow: hidden`，内容真实高 1296px，
+ * 而里面一层可滚动的都没有 → 超出的部分被裁掉且够不着。
+ *
+ * 为什么滚动由**这一层**负责而不是让各面板自己滚：
+ * 那些面板（列表 / 收藏 / 运行历史）的根元素高度是**内容高度**，
+ * 它们不知道外面有多高 —— 「超了就滚」这件事只有知道容器高度的这一层能做。
+ *
+ * ### 尺寸链（缺一条都会退化成「还是看不到」）
+ *
+ *   `.body`（flex 列、`overflow: hidden`）
+ *     └ `.tabScroll`  ← **本层**：`flex: 1 1 auto`（吃掉剩余高度）+ `min-height: 0`
+ *                       + `overflow-y: auto`（真正的滚动容器）
+ *          └ 面板根（内容多高就多高，不参与收缩）
+ *
+ * `min-height: 0` **必须有**：flex 子项的收缩下限默认是**内容高度**，
+ * 不写这行它就不肯缩、`overflow-y` 永远不触发（本项目踩过，`height-chain` 盯着这条）。
+ *
+ * ⚠️ **`display: flex` 这个选择本身没问题，但下面原来给它的理由写错了**
+ * （2026-10-14 更正，T4 说它「无法复现」，它是对的 —— 我实测确认了）：
+ *
+ * 我原先写「若换成 `display: block`，`.histWrap` 的 `height: 100%` 会退化成 auto
+ * → 表头被滚走」。**这条是错的**（当时是推断，没量）。真 Chromium 实测：
+ *
+ *   配置                      .histWrap 高   表头高   滚到底后表头位移
+ *   flex 容器（现状）          390px          33px     0px（没被滚走）
+ *   block 容器                 390px          33px     0px（没被滚走）
+ *
+ * **两种完全一样**。原因：`.histWrap` 的 `height: 100%` 解析的是**包含块的高度**，
+ * 而 `.tabScroll` 自己是 flex 项、`flex: 1 1 auto` 已经从父级拿到了**确定高度** ——
+ * 它内层是 flex 还是 block，都不影响那个高度是确定的，所以 `100%` 照样解析得出来。
+ * T4 复现不了是对的，我复现不出来也一样。
+ *
+ * 所以 `display: flex` 保留，但理由只是**本层自己要排纵向**（`flex-direction: column`
+ * 让子项按列排、`min-height: 0` 那套收缩规则才在本层生效），
+ * **不是因为 block 会弄坏运行历史面板**。别照一条没量过的因果去改它。
+ */
+.tabScroll {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  /* 滚动条本身也做一点样式跟随（Firefox 认这两条；Chromium 走 ::-webkit-）。 */
+  scrollbar-width: thin;
+  scrollbar-color: var(--dsw-alias-border-l4, rgba(128, 128, 128, 0.35)) transparent;
+}
+/* ⚠️ **这里曾经有一条 `.tabScroll > * { flex: 0 0 auto; }`，2026-10-14 已删。**
+ *
+ * ## 删它的依据（T4 的诊断对，但它给的修法会把界面改坏）
+ *
+ * T4 说得对：这条规则与 Tailwind 的 `.flex-1` **同优先级**（都是单类选择器 0-1-0），
+ * 而产物里 Tailwind 的 CSS **后注入** → 后写的赢。实测（真 Chromium + 产物真 CSS）：
+ * `CollectPanel` 根元素（`flex min-h-0 flex-1 flex-col`）的 computed flex 是
+ * **`1 1 0%`**，我们那条 `0 0 auto` **被覆盖** → 对它是**死规则**。
+ *
+ * ## 量过的四种配置（**按真量过的量写，标清哪条是我复现的、哪条不是我复现的**）
+ *
+ * 表格里的数是**我这一轮自己跑真 Chromium + 产物真 CSS 量出来的**
+ * （容器 390px 高；「内容多」12 行、「内容少」1 行）：
+ *
+ *   | 配置 | 面板根 computed flex | 内容多 → 滚到底刷新行 | 内容少 → 底部 |
+ *   |---|---|---|---|
+ *   | **① 现状**：根带 `flex-1`，那条规则**已删** | `1 1 0%` | **0px**（仍在）✅ | 填满，差 0 ✅ |
+ *   | ② 给那条规则**加权重**（`.tabScroll.tabScroll > *`） | `0 0 auto` | **−952px**（被滚走）❌ | **露背景 236px** ⚠️ |
+ *   | ③ 去掉根的 `flex-1`，**且规则已删** | `0 1 auto` | **0px**（仍在）✅ | **露背景 236px** ⚠️ |
+ *   | ④ 去掉根的 `flex-1`，**但规则还在** | `0 0 auto` | **−952px**（被滚走）❌ | **露背景 236px** ⚠️ |
+ *
+ * ## ⚠️ 更正一处（T12 复评时点的，它是对的）
+ *
+ * 我上一版把 ③④ **合并成一句「同上回退」并写成 computed `0 0 auto`** —— 那是**④ 的量**，
+ * 而 ④ 是「**保留那条规则**时去掉 flex-1」的样子（= 照 T4 的说法「让我们的规则生效」之后的状态）。
+ *
+ * **③ 才是「去掉 flex-1 且不再保留那条规则」的最终样子**，它**不**被滚走（`0 1 auto`，
+ * 刷新行稳定在 0px）—— 所以 T12 复现不出我那个 −952px 是**对的**，它量的是 ③。
+ * 而我在注释里用一个数字盖住了两个不同配置，这是**我没把被测配置标清**。
+ * （我的 −952px 本身是真的，但它属于 ②④，见上表；T12 量得 −1040px，差在内容高度。）
+ *
+ * **③ 的真实缺陷不是「被滚走」，而是「内容矮时底部露出外层背景」**：
+ * 根只剩内容高度（我量得 154px / 容器 390px 差 236px），底下那段露出 `.body` 的底色。
+ *
+ * ## 所以正确的动作是删掉这条规则（不是加权重、也不是去掉 flex-1）
+ *
+ *   · ② 加权重 → **真的会回退**（刷新行被滚走）→ 不能采纳。
+ *     ⚠️ T12 已认错：「我上轮推荐『加权重』是错的」。
+ *   · ③ 去掉 `flex-1` → 不滚走，但**底部露背景** —— 换了一个缺陷，同样不能采纳。
+ *   · **① 现状**（根保留 `flex-1`、那条规则删掉）→ **两个问题都没有**，是唯一干净的配置。
+ *
+ * 也就是说：**现状（Tailwind 赢）恰恰是想要的那个行为**，
+ * 而「让我们的规则赢」会把它弄坏。所以正确动作是**删掉这条没用的规则**。
+ *
+ * ## 为什么删掉是安全的（三种面板逐一量过）
+ *
+ *   · **`WorkflowList`**（根是裸 `<div>`，`overflow: visible`）：删前 `0 0 auto`、
+ *     删后 `0 1 auto`，**行为完全相同**（都取内容高度、都由外层滚）。
+ *     原因：`overflow` 是 `visible` 时「自动最小尺寸」＝内容高度，本来就压不扁。
+ *   · **`CollectPanel`**：删前被 `.flex-1` 覆盖、删后也一样 —— 无差别。
+ *   · **`RunHistoryPanel`**：`.histWrap` 自带 `height: 100%` 撑满，同样无差别。
+ *
+ * 换句话说它**在三种面板上都没在保护任何东西** —— 留着只会让人以为
+ * 「子项已经被保护好了」，而真正撑高的是各面板自己的规则（`flex-1` / `height: 100%`）。
+ * 这正是 T2 清掉、T4 又抓到的那类**看着有用、其实无效**的规则。
+ *
+ * ## 子项被压扁这件事由谁负责
+ *
+ * 由**声明撑高的那个面板自己**负责 —— 意图写在它自己的源码里更清楚：
+ *   · `CollectPanel.tsx` 根元素：`flex min-h-0 flex-1 flex-col`
+ *   · `RunHistoryPanel` 的 `.histWrap`：`height: 100%`
+ *   · `WorkflowList` 不需要撑满（内容多高就多高，外层滚）
+ * `height-chain` 的断言改成**盯这三处声明**（而不是盯一条会被覆盖的通用规则），
+ * 这样「谁把撑高删了」会被当场抓到，而不会再退回「通用规则其实没生效」的假安全。
+ */
+
+/* ── 运行历史面板 ─────────────────────────────────────
+ * 三种语气：成功绿 / 失败红 / 其余中性。失败行同时置顶（在组件里排好）。 */
+.histWrap { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.histHead {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 8px 12px; border-bottom: 1px solid var(--v1-line);
+  font-size: var(--text-ewb-label); color: var(--v1-dim);
+}
+.histBtn {
+  font-size: var(--text-ewb-caption); padding: 3px 9px; border-radius: 6px;
+  border: 1px solid var(--v1-line); background: transparent;
+  color: var(--v1-ink); cursor: pointer;
+}
+.histBtn:hover { border-color: var(--v1-edge-hot); }
+.histEmpty { padding: 20px 14px; font-size: var(--text-ewb-label); line-height: 1.7; color: var(--v1-dim); }
+.histWarn { color: #ff8a8a; margin-bottom: 8px; }
+.histList { flex: 1 1 auto; min-height: 0; overflow-y: auto; padding: 6px 8px 14px; }
+.histRow {
+  border: 1px solid var(--v1-line); border-radius: 8px;
+  margin-bottom: 6px; background: rgba(18, 23, 34, 0.6); overflow: hidden;
+}
+.hist_ok { border-color: rgba(78, 201, 176, 0.35); }
+.hist_error { border-color: rgba(255, 95, 109, 0.5); }
+.hist_warn { border-color: rgba(240, 180, 41, 0.45); }
+.histRowHead {
+  display: flex; align-items: center; gap: 8px; width: 100%;
+  padding: 8px 10px; background: transparent; border: none;
+  color: var(--v1-ink); cursor: pointer; text-align: left;
+  font-family: var(--dsw-font-family);
+  font-size: var(--text-ewb-label);
+}
+.histRowHead:hover { background: rgba(124, 156, 255, 0.07); }
+.histState { flex: 0 0 auto; font-weight: 700; }
+.hist_ok .histState { color: #4ec9b0; }
+.hist_error .histState { color: #ff5f6d; }
+.hist_warn .histState { color: #f0b429; }
+.hist_running .histState { color: #4fd6ff; }
+/* 排队 / 跳过：不起眼的灰（历史里这两类不是重点，靠状态字读就够）。 */
+.hist_queued .histState, .hist_idle .histState { color: var(--v1-dim); }
+.histName {
+  flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+}
+.histMeta { flex: 0 0 auto; font-size: var(--text-ewb-caption); color: var(--v1-dim); }
+.histCaret { flex: 0 0 auto; color: var(--v1-dim); }
+.histErr {
+  padding: 6px 10px 8px; font-size: var(--text-ewb-caption); line-height: 1.6;
+  color: #ffb4b4; word-break: break-word;
+}
+.histBody { padding: 4px 10px 10px; border-top: 1px solid var(--v1-line); }
+.histBlock { margin-top: 8px; }
+.histBlockTitle { font-size: var(--text-ewb-caption); color: var(--v1-dim); margin-bottom: 4px; }
+.histPre {
+  margin: 0; padding: 7px 9px; border-radius: 6px;
+  background: rgba(0, 0, 0, 0.35); border: 1px solid var(--v1-line);
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption); line-height: 1.55; color: rgba(226, 232, 240, 0.9);
+  white-space: pre-wrap; word-break: break-word; max-height: 260px; overflow-y: auto;
+}
+
+/* ── 汇报（2026-10-25 契约 AO）──────────────────────────────────────
+ *
+ * 汇报是「这次交出了什么」的结论，日志是「我在跑」的流水。两块靠 `.histBlockTitle`
+ * 的小标题分开（「汇报」/「日志」），这里只管汇报条目自己怎么排。
+ *
+ * 配色照 `node-form.module.css` 的 `hint_info/warning/danger` 那套语义：
+ * info 灰、warning 黄、danger 红。**不用大面积底色** —— 汇报是列表，
+ * 一条一块底色会把「节点明细」本身淹掉，只在左边给一道 2px 竖线。
+ */
+
+.rpList { display: flex; flex-direction: column; gap: 3px; }
+
+.rpItem {
+  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px;
+  padding: 4px 8px 4px 9px; border-radius: 4px; border-left: 2px solid transparent;
+  font-size: var(--text-ewb-caption); line-height: 1.6;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* info：中性灰。 */
+.rp_info { border-left-color: var(--v1-line); color: rgba(226, 232, 240, 0.86); }
+/* warning：黄。 */
+.rp_warning {
+  border-left-color: color-mix(in srgb, var(--dsw-alias-state-warn-primary) 70%, transparent);
+  color: rgba(255, 226, 160, 0.92);
+}
+/* danger：红。 */
+.rp_danger {
+  border-left-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 70%, transparent);
+  color: rgba(255, 180, 175, 0.94);
+}
+
+/* 「第 3/5 条」这类进度前缀：等宽、暗一档，与主句分开。 */
+.rpItemTag {
+  flex: 0 0 auto;
+  padding: 0 5px; border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-meta); color: var(--v1-dim);
+}
+
+.rpMsg { flex: 1 1 auto; min-width: 0; word-break: break-word; }
+
+/* 「（出现 N 次）」：跟在主句后面，弱一档。 */
+.rpTimes { margin-left: 4px; color: var(--v1-dim); font-size: var(--text-ewb-meta); }
+
+/* 位置：等宽，不吃主动权。 */
+.rpLoc {
+  flex: 0 0 auto;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-meta); color: var(--v1-dim);
+}
+
+.rpMetrics { flex: 1 1 100%; display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.rpMetric { display: inline-flex; gap: 4px; align-items: baseline; }
+.rpMetricKey { color: var(--v1-dim); font-size: var(--text-ewb-meta); }
+.rpMetricVal {
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-meta); color: rgba(226, 232, 240, 0.92);
+}
+
+.rpFiles { flex: 1 1 100%; display: flex; flex-direction: column; gap: 1px; }
+/* 文件路径：纯文本，不做成链接（运行历史是回看，文件可能已被移走 / 改名）。 */
+.rpFile {
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-meta); color: rgba(150, 200, 255, 0.88);
+  word-break: break-all;
+}
+
+
+
+/* ══ 内容画布（2026-10-25 契约 AY）═══════════════════════════════════════
+ *
+ * 下面全是**新加的类**，一个既有类的值都没动（任务书要求）。
+ *
+ * ## 这一组要撑住的那条观感（计划 §三 3.2）
+ *
+ * 「五个节点空着摆在画布上，**看起来就是五块内容**，不是五张卡片」。
+ * 所以节点相关的类里**没有 border、没有背景卡、没有标题栏**：
+ * 节点盒子只是内容的边界，内容 `100%` 撑满它。
+ *
+ * ⚠️ React Flow 自己给 `.react-flow__node` 一套默认样式（背后有一个浅边框与
+ * 白色背景）。要接近「一块内容」必须**盖掉**它 —— 见 `.contentNode` 的
+ * `background: transparent; border: 0` 两行。这不是在跟库较劲，
+ * 是计划 §4.4 已经认下的代价。
+ */
+
+/* 内容板块里「画布」那一格（常驻挂载的容器）。
+ *
+ * 与 .pane 同一套手法（opacity 藏、绝对定位铺满、pointer-events 要 !important），
+ * 但不复用那个类：`.pane` 是工作流板块内部分格用的，语义不同，
+ * 将来某一边要调也不该互相牵连。 */
+.contentPane {
+  position: absolute;
+  inset: 0;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  opacity: 0;
+  pointer-events: none;
+}
+.contentPane:not([data-active]) * { pointer-events: none !important; }
+.contentPane[data-active] {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* 画布整体：工具条 + 舞台。 */
+.contentCanvas {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+}
+
+/* ── 内容画布那侧的顶部条（票 54：从「上方一行」改成「画布内悬浮」）──
+ *
+ * 改之前它是 `.contentCanvas` 里 `.canvasMain` **之前**的一行，
+ * 吃画布上方一条高度、带底边。用户 2026-10-29「两边都不要顶部栏」。
+ *
+ * 现在它挂在 `.contentCanvasStage`（画布可视区）里，与执行画布的 `.toolbar`
+ * 同一套几何：贴顶、拉满宽、`pointer-events: none`、不铺底。
+ *
+ * ⚠️ 与 `.toolbar` 的差别：这一条**没有** `container-type` ——
+ * 执行画布那套 `@container ewb-toolbar` 是历史包袱（票 55 删），
+ * 内容画布从来没有那套，就别引进来了。 */
+.contentCanvasBar {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  z-index: 8;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px;
+  background: transparent;
+  border: none;
+  /* 不挡画布：容器不吃事件，只有里面的按钮自己吃（`.contentCanvasBtn`）。 */
+  pointer-events: none;
+}
+/* 分组：组内空白穿透到画布（同 `.tbSide` 的理由）。 */
+.contentCanvasBarSide {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  pointer-events: none;
+}
+.contentCanvasBarSide > * { pointer-events: auto; }
+/* 两组之间的弹性空档 —— 它不吃事件，用户在这里拖的是画布本身。 */
+.contentCanvasBarGap { flex: 1 1 auto; pointer-events: none; }
+/* 悬浮条上的图标按钮（票 54：只留图标）。28×28 与执行画布 `.toolBtn` 同高，
+ * 两边看起来才是一套。`pointer-events: auto` 是必需的（父层是 none）。 */
+.contentCanvasBarBtn {
+  pointer-events: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border-radius: 8px;
+  border: 1px solid var(--v1-line);
+  background: var(--dsw-alias-bg-layer-2);
+  color: var(--v1-ink);
+  cursor: pointer;
+  transition: box-shadow 200ms, border-color 200ms, background-color 200ms;
+}
+.contentCanvasBarBtn:hover { border-color: color-mix(in srgb, var(--v1-accent) 55%, transparent); }
+.contentCanvasBarBtn:active { transform: translateY(1px); }
+.contentCanvasBarBtn:focus-visible { outline: 2px solid var(--v1-accent); outline-offset: 1px; }
+.contentCanvasBarBtn[disabled] { opacity: 0.38; cursor: default; transform: none; }
+/* 「已开」态（设置浮窗开着 / 侧栏开着 / 图例开着）。 */
+.contentCanvasBarBtn[data-on] {
+  border-color: color-mix(in srgb, var(--v1-accent) 60%, transparent);
+  color: var(--v1-accent);
+  background: color-mix(in srgb, var(--v1-accent) 14%, var(--dsw-alias-bg-layer-2));
+}
+/* 未保存的强调色。 */
+.contentCanvasBarBtn[data-hot] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-warning-primary, #f0b429) 55%, transparent);
+  color: var(--dsw-alias-state-warning-primary, #f0b429);
+}
+/* 竖线分组（照参考的 <Divider>）。 */
+.contentCanvasBarDivider {
+  pointer-events: none;
+  width: 1px;
+  height: 16px;
+  flex: 0 0 auto;
+  background: var(--v1-line);
+  margin: 0 2px;
+}
+
+.contentCanvasTitle {
+  flex: 0 0 auto;
+  max-width: 220px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-ewb-label);
+  color: var(--dsw-alias-label-primary);
+}
+/* 保存状态：不抢注意力，但看得见（「保存失败」必须显眼，靠 tone 改不了就靠颜色）。 */
+.contentCanvasHint {
+  flex: 0 0 auto;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+}
+.contentCanvasHint[data-ewb-canvas-save="error"] { color: #ff8a8a; }
+.contentCanvasBtn {
+  flex: 0 0 auto;
+  padding: 3px 8px;
+  border: 1px solid var(--v1-line);
+  border-radius: 6px;
+  background: transparent;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-secondary);
+  cursor: pointer;
+}
+.contentCanvasBtn:hover { color: var(--dsw-alias-label-primary); border-color: var(--v1-edge-hot); }
+.contentCanvasBtn:disabled { cursor: default; }
+.contentCanvasDivider {
+  flex: 0 0 auto;
+  width: 1px;
+  height: 14px;
+  margin: 0 2px;
+  background: var(--v1-line);
+}
+
+/* 出错条（读不到 / 存不上）。 */
+.contentCanvasErr {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: flex-start;
+  gap: 8px;
+  margin: 6px 4px 0;
+  padding: 6px 10px;
+  border: 1px dashed var(--v1-line);
+  border-radius: 8px;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  line-height: 1.6;
+  color: var(--dsw-alias-label-secondary);
+}
+
+/* 舞台：React Flow 挂在这里。高度链必须一路 min-height:0，否则视口渲染不出来。 */
+.contentCanvasStage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+}
+
+/* ── 节点：一块内容，不是一张卡 ──────────────────────────────────────── */
+
+/* 所有内容节点的外壳。
+ *
+ * ## 三条硬约定（改之前先读计划 §三 3.2）
+ *   ① **无边框**（`border: 0`）—— 有边框就是卡片；
+ *   ② **无背景**（`transparent`）—— 有底色就是卡片；
+ *   ③ **内容撑满**（子元素 width/height 100%）—— 留内边距就是卡片。
+ *
+ * 悬停时才给一条极淡的轮廓，让人知道「这块可以拖」——那不是装饰，是可用性。 */
+/* ★ 小地图（票 35，2026-10-28）。
+ *
+ * ## 为什么之前「点了没变化」
+ *
+ * 代码里 `<MiniMap pannable zoomable />` 一直在（`ContentCanvas.tsx:2040`），
+ * 开关也写对了，但**全仓 CSS 里一条 `react-flow__minimap` 都没有** ——
+ * 于是它用 React Flow 的默认样式（`position: absolute`、右下角），
+ * 而我们的右下角已经被**缩放控件那一排**占着（`.canvasZoom`，`right:10px; bottom:10px`）。
+ * 两个东西叠在一起，用户看到的是「按钮那一排」，小地图被压在底下。
+ *
+ * ## 改法
+ *
+ * ① 给它一个明确的位置与尺寸（挪到缩放条**上方**，不重叠）；
+ * ② 配色跟主题走（默认那个白底在深色主题里像一块补丁）。
+ *
+ * ⚠️ 选择器用 `.react-flow__minimap` 而不是我们自己的类名：那是 React Flow
+ * 画出来的元素，我们控制不到它的 className。 */
+.react-flow__minimap {
+  position: absolute;
+  right: 10px;
+  /* 缩放条在 `bottom: 10px` 那一排、高约 28px —— 让开它，再往上留 8px。 */
+  bottom: 46px;
+  z-index: 6;
+  width: 148px;
+  height: 108px;
+  overflow: hidden;
+  border: 1px solid var(--v1-line);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--dsw-alias-bg-elevated, #1b1c1f) 88%, transparent);
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.24);
+}
+/* 里的节点色块：跟着我们的节点色走，不用它默认的浅蓝。 */
+.react-flow__minimap-mask {
+  fill: color-mix(in srgb, var(--v1-dim) 26%, transparent);
+}
+.react-flow__minimap-node {
+  fill: var(--v1-edge);
+  stroke: none;
+}
+
+/* 节点外壳的**两层结构**（票 35，2026-10-28，照参考项目 `canvas-node.tsx:346-384`）。
+ *
+ * ## 为什么必须分两层
+ *
+ * 原来只有一层 `.contentNode`，它带着 `overflow: hidden`。而挂在框**外面**的东西
+ * 全都被它裁掉了：
+ *   · `.contentNodeName`（`bottom: 100%`，标题）
+ *   · `.contentHoverBar`（`top: -26px`，悬浮工具条）
+ *   · `.contentResize_*`（`-4px`，四角手柄）
+ *
+ * 于是标题 `opacity: 1` 也一个像素看不到、悬浮工具条看不见、四角手柄只露出半截。
+ *
+ * ## 参考项目怎么解决
+ *
+ * 外层包装 div **不裁剪**（管标题与工具条的位置），内层框管圆角裁剪。照这个分成两层：
+ *   · `.contentNodeWrap`（本类）：`overflow: visible` + `position: relative`，是定位基准；
+ *   · `.contentNode`（下面那个）：仍然 `overflow: hidden`，管图片的圆角裁剪。
+ *
+ * ⚠️ 两层的宽高都是 100%，叠在一起，视觉上仍是一个框。 */
+.contentNodeWrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+}
+
+.contentNode {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  min-width: 0;
+  min-height: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  overflow: hidden;
+}
+.contentNode:hover { outline: 1px solid var(--v1-edge-hot); outline-offset: 2px; }
+
+/* 名称：**平时看不见**，悬停 / 选中 / 正在改名时才出现（计划 §三 3.2）。
+ *
+ * ★ 票 35（2026-10-28）修了两处让它「既看不见也点不到」的缺陷：
+ *
+ * | 缺陷 | 原来 | 现在 |
+ * |---|---|---|
+ * | 看不见 | 挂在 `.contentNode` 里，而它 `overflow: hidden` → 整块裁掉 | 挂到 `.contentNodeWrap`（`overflow: visible`）里 |
+ * | 点不到 | `pointer-events: none` → 永远收不到点击 | 去掉它，标题是 `<button>` |
+ *
+ * 第三条照参考项目（`canvas-node.tsx:347`）：显隐条件加**正在改名**那一档 ——
+ * 不加的话一进改名态标题就消失，输入框孤零零挂在框外。
+ * 这一档由 `.contentNodeWrapNameEditing` 那个修饰类给。 */
+.contentNodeName {
+  /* ★ 名字在**框上方**（用户 m03414：「节点命名放在节点框上面，可点击修改」）。
+   * `bottom: 100%` = 贴在框顶边上方一点点（不占框内的内容区）。 */
+  position: absolute;
+  left: 6px;
+  bottom: 100%;
+  margin-bottom: 3px;
+  max-width: calc(100% - 12px);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  padding: 1px 6px;
+  border: 0;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.55);
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-meta);
+  color: rgba(255, 255, 255, 0.86);
+  text-align: left;
+  cursor: text;
+  opacity: 0;
+  transition: opacity 120ms ease;
+  /* ⚠️ **不许写 `pointer-events: none`** —— 写了标题就永远点不到，
+   * 里面双击改名那段代码一次都执行不了（票 35 的缺陷二）。 */
+}
+.contentNodeWrap:hover .contentNodeName,
+.react-flow__node.selected .contentNodeName,
+.contentNodeWrapNameEditing .contentNodeName { opacity: 1; }
+
+/* ★ 改名修饰类（票 35，2026-10-28）。
+ *
+ * CSS Modules 只导出**真的出现在某条规则里**的类名 —— 只写在选择器里、
+ * 没有单独声明的话 `css.contentNodeWrapNameEditing` 拿到的是 `undefined`，
+ * 于是 JS 里拼出来的类名是一串 `undefined`（不报错、静默失效）。
+ *
+ * 所以这一条**必须有**，哪怕它不声明任何属性。它声明的是「改名期间包装层
+ * 不算 hover 也要把标题显示出来」这件事的下半句 —— 上半句在上面那条选择器里。
+ *
+ * `position: relative` 不是装饰：`NodeName` 的 `bottom: 100%` 要一个定位祖先，
+ * 而改名输入框也可能挂在同一层。 */
+.contentNodeWrapNameEditing {
+  position: relative;
+}
+
+/* ★ 选中高亮去（用户 m03414：「点击节点要有选中高亮框」）。
+ *
+ * 原来只有上面那一条 —— **只有名字变亮，框本身没变化**；
+ * 而且名字现在移到了框上方，光靠它看不出“选中了哪一块”。
+ *
+ * ## 为什么用 `box-shadow` 而不用 `outline`
+ *
+ * `.contentNode` 已经有 `:hover { outline: 1px solid }`（悬停一道细线）。
+ * 若选中也用 `outline`，两个状态在同一个属性上打架，且 `outline` 没法做微光。
+ * `box-shadow` 能叠两层（贴边一道实线 + 外面一层扩散光），与悬停共存。
+ *
+ * ## 与分组框的选中态怎么区分
+ *
+ * 分组框（`.contentGroup`）本身是**虚线**。选中它时要**不得**把它变成实线——
+ * 否则看不出那是个框。所以分组框的选中只加**外光**、不加贴边实线；
+ * 内容节点的选中才加贴边实线。两种状态肉眼一看就不同。 */
+.react-flow__node.selected .contentNode {
+  box-shadow:
+    inset 0 0 0 1.5px var(--v1-edge-hot),
+    0 0 0 3px color-mix(in srgb, var(--v1-edge-hot) 22%, transparent),
+    0 0 14px color-mix(in srgb, var(--v1-edge-hot) 30%, transparent);
+}
+/* 分组框被选中：**只加外光**（保留虚线观感）。 */
+.react-flow__node.selected .contentGroup {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--v1-edge-hot) 20%, transparent);
+}
+/* 分组框里的内容节点被选中时，内容节点自己的描边要在 —— 上两条互不排斥。 */
+
+/* 连接点：平时完全透明，悬停 / 选中才显形。
+ *
+ * ⚠️ 不能 `display: none` —— React Flow 要量它的位置来算连线落点，
+ * 不显示的 handle 会被算成 (0,0)，连线会全跑到左上角。 */
+/* ★ **2026-10-29（票 60）端口常显，策略是「选中即常显」。**
+ *
+ * ## 为什么不照参考项目的做法
+ *
+ * 参考项目 `canvas-node.tsx:473` 是**只有 hover** 才显（我们原来也是那样）。
+ * 用户这一票的要求是「用户知道这里能连，而不是必须把鼠标移到那个 8px 的
+ * 小方块上才看得见」。
+ *
+ * ## 为什么选「选中即常显」而不是「连过一次之后同类端口常显」
+ *
+ * 票面给了两个选项，我选前者，理由：
+ *
+ * | 方案 | 需要记什么 | 坏处 |
+ * |---|---|---|
+ * | 连过一次之后常显 | 要**按节点**记「它连过没有」→ 得往存档里加字段 | 票面明令「不许给 `ContentEdge` 加字段」；而记在节点上同样是存档形状变更 |
+ * | **选中即常显** | 什么都不用记（`selected` 是 React Flow 的运行时状态） | 只解决「选中这个节点时看得见端口」，解决不了「鼠标不在画布上时全局可见」 |
+ *
+ * 后者零存档变更、且**当一个节点被选中时，用户正在想的就是「它要怎么连」**——
+ * 那是端口最该出现的时候。这条判据由 `data-ewb-port-always` 钉着（见下）。
+ *
+ * ## 8px 的问题不是大小，是「一直看不见」
+ *
+ * 只在 hover 时出现，等于用户**先要知道那里有个东西**才可能 hover 上去。
+ * 选中时显形把「发现」这一步提前了：点一下节点就能看见它的两个端口。 */
+.contentHandle {
+  width: 8px;
+  height: 8px;
+  border: 1px solid transparent;
+  background: transparent;
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+/* hover 优先（鼠标就在那，看得最清）。 */
+.contentNode:hover .contentHandle,
+.contentConfig:hover .contentHandle,
+/* ★ 票 60 新增：选中就常显（不必 hover）。 */
+.react-flow__node.selected .contentHandle,
+/* ★ 票 60 新增：正在连线时全部常显 —— 用户这时候最需要看见还能连到哪。
+ * `connecting` 是 React Flow 挂在根元素上的类。 */
+.react-flow.connecting .contentHandle {
+  opacity: 1;
+  border-color: var(--v1-edge-hot);
+  background: var(--dsw-alias-bg-layer-1);
+}
+
+/* 文本节点：就是一个输入框，铺满节点。 */
+.contentTextArea {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  resize: none;
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  outline: none;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-label);
+  line-height: 1.65;
+  color: var(--dsw-alias-label-primary);
+}
+.contentTextArea:focus { border-color: var(--v1-edge-hot); background: rgba(255, 255, 255, 0.05); }
+.contentTextArea::placeholder { color: var(--v1-dim); }
+
+/* 文本节点的**非编辑态**（契约 CD 加的「单击看、双击才进编辑」那一半）。
+ *
+ * ## 为什么必须有这个类（2026-10-26 补，css-refs 报的缺）
+ *
+ * `content-nodes.tsx:444` 在非编辑态渲染的是这个 `div`（不是 textarea）。
+ * 原来 CSS 里**没有它** —— 于是文本节点一旦不在编辑态，宽度、内边距、字体、
+ * 换行规则全丢（`div` 按浏览器默认排版，长行会溢出节点）。
+ * `tests/css-refs.mjs` 用「源码里引用的每个 `css.xxx` 都要在样式表里有定义」
+ * 守着这件事，它当场报了出来。
+ *
+ * ## 取值为什么与 `.contentTextArea` 逐条对齐
+ *
+ * 两者是**同一个节点的两种状态**（非编辑 / 编辑），用户双击切过去时
+ * 文字**不许跳一下**。所以 padding / border（宽度）、font-family / font-size /
+ * line-height、color 全部照抄。差别只有两处，都是有意的：
+ *   ① `white-space: pre-wrap` + `overflow-wrap: anywhere`：textarea 会自动换行，
+ *      `div` 不会 —— 不写这两条，长句子会顶出节点右侧；
+ *   ② 去掉 `resize` / `outline` / `::placeholder`：那些是表单元素才有的东西。
+ *
+ * ⚠️ 改这里的时候一定要同时看 `.contentTextArea` —— 两处漂了，用户在
+ * 「看」与「改」之间切换时就会看到文字位移。
+ */
+.contentTextView {
+  display: block;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  /* 与 textarea 的 padding + border 完全同值 —— 差 1px 文字就会横向跳。
+   * textarea 的 border 是 1px solid transparent，这里同样留 1px 透明边。 */
+  padding: 10px 12px;
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-label);
+  line-height: 1.65;
+  color: var(--dsw-alias-label-primary);
+  /* textarea 会自动换行，div 不会 —— 这两条是「看起来一致」的关键。 */
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  overflow: auto;
+  cursor: text;
+}
+
+/* 图片 / 视频：铺满节点。 */
+.contentMedia {
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+/* 音频：不铺满，给播放器一条。 */
+.contentAudio {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 10px;
+}
+
+/* 空占位（还没有内容时）：**不能是一片空白** —— 空白看着像坏了。 */
+.contentEmpty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  border: 1px dashed var(--v1-line);
+  border-radius: 10px;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+}
+
+/* ── 生成配置节点 ────────────────────────────────────────────────────── */
+
+/* 它是一块**设置面**，所以可以有一个底色 —— 它不是「内容」，
+ * 与那四种「一块内容」在观感上必须有所不同（参考项目也是这样）。 */
+.contentConfig {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 100%;
+  height: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--v1-line);
+  border-radius: 10px;
+  background: rgba(255, 255, 255, 0.03);
+  overflow: hidden;
+}
+.contentConfigRow { display: flex; align-items: center; gap: 6px; min-width: 0; }
+.contentConfigKey {
+  flex: 0 0 34px;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-meta);
+  color: var(--v1-dim);
+}
+.contentConfigInput {
+  min-width: 0;
+  flex: 1 1 auto;
+  padding: 2px 6px;
+  border: 1px solid var(--v1-line);
+  border-radius: 5px;
+  background: var(--dsw-alias-bg-layer-1);
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-meta);
+  color: var(--dsw-alias-label-primary);
+  outline: none;
+}
+.contentSeg {
+  display: flex;
+  flex: 1 1 auto;
+  gap: 2px;
+  padding: 1px;
+  border: 1px solid var(--v1-line);
+  border-radius: 5px;
+}
+.contentSegBtn {
+  flex: 1 1 0;
+  padding: 1px 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-meta);
+  color: var(--v1-dim);
+  cursor: pointer;
+}
+.contentSegBtn[data-on] { background: rgba(124, 156, 255, 0.16); color: var(--dsw-alias-label-primary); }
+
+/* ── 还没做的那几格的占位 ────────────────────────────────────────────── */
+
+.contentPendingBox {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  padding: 14px 16px;
+  border: 1px dashed var(--v1-line);
+  border-radius: 10px;
+}
+.contentPendingTitle {
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-meta);
+  color: var(--dsw-alias-label-primary);
+}
+.contentPendingNote {
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  line-height: 1.75;
+  color: var(--v1-dim);
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+ * 契约 CD（用户 m01076）：内容画布交互补全
+ *
+ * ⚠️ 这一段**只新增类**，上面既有类的值一个都没改（契约硬要求）。
+ * 观感照参考项目 `infinite-canvas` 的 Tailwind 写法换算成 CSS Modules：
+ * 同一个视觉结果，但不引入 antd。
+ * ═══════════════════════════════════════════════════════════════════════ */
+
+/* 工具条 + 侧栏 + 舞台的横向布局。 */
+.canvasMain {
+  position: relative;
+  display: flex;
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  gap: 0;
+}
+
+/* ── 左侧栏（契约 CD 第四节）────────────────────────────────────────── */
+
+.canvasSide {
+  position: relative;
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  min-height: 0;
+  border-right: 1px solid var(--v1-line);
+  background: rgba(255, 255, 255, 0.012);
+}
+
+.canvasSideCollapsed {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 6px;
+  border-right: 1px solid var(--v1-line);
+}
+
+.canvasSideTabs {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  border-bottom: 1px solid var(--v1-line);
+}
+.canvasSideTab {
+  padding: 3px 9px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+  cursor: pointer;
+}
+.canvasSideTab:hover { color: var(--dsw-alias-label-primary); }
+.canvasSideTab[data-on] {
+  background: rgba(124, 156, 255, 0.16);
+  color: var(--dsw-alias-label-primary);
+}
+.canvasSideIconBtn {
+  padding: 2px 7px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+  cursor: pointer;
+}
+.canvasSideIconBtn:hover { color: var(--dsw-alias-label-primary); }
+
+.canvasSideBody {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  gap: 6px;
+  padding: 8px;
+}
+.canvasSideFilters {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+}
+.canvasSideChip {
+  padding: 2px 8px;
+  border: 1px solid var(--v1-line);
+  border-radius: 999px;
+  background: transparent;
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+  cursor: pointer;
+}
+.canvasSideChip:hover { border-color: var(--v1-edge-hot); color: var(--dsw-alias-label-primary); }
+.canvasSideChip[data-on] {
+  background: rgba(124, 156, 255, 0.16);
+  border-color: transparent;
+  color: var(--dsw-alias-label-primary);
+}
+.canvasSideSearch {
+  flex: 0 0 auto;
+  width: 100%;
+  padding: 4px 7px;
+  border: 1px solid var(--v1-line);
+  border-radius: 6px;
+  background: transparent;
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-primary);
+  outline: none;
+}
+.canvasSideSearch:focus { border-color: var(--v1-edge-hot); }
+.canvasSideList {
+  display: flex;
+  flex: 1 1 auto;
+  flex-direction: column;
+  min-height: 0;
+  gap: 1px;
+  overflow-y: auto;
+}
+.canvasSideRow {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: baseline;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 5px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.canvasSideRow:hover { background: rgba(255, 255, 255, 0.04); }
+.canvasSideRow[data-on] { background: rgba(124, 156, 255, 0.16); }
+.canvasSideRowType {
+  flex: 0 0 auto;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+}
+.canvasSideRowName {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-secondary);
+}
+.canvasSideEmpty {
+  padding: 8px 4px;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+}
+.canvasSideCount {
+  flex: 0 0 auto;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+}
+.canvasSideGrid {
+  display: flex;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 6px;
+  min-height: 0;
+  overflow-y: auto;
+  align-content: flex-start;
+}
+.canvasSideAsset {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 2px;
+  width: 72px;
+  padding: 0;
+  border: 1px solid var(--v1-line);
+  border-radius: 6px;
+  background: transparent;
+  overflow: hidden;
+  cursor: pointer;
+}
+.canvasSideAsset:hover { border-color: var(--v1-edge-hot); }
+.canvasSideAssetMedia {
+  display: block;
+  width: 100%;
+  height: 54px;
+  object-fit: cover;
+}
+.canvasSideAssetName {
+  padding: 1px 3px 3px;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+}
+
+/* ── 素材分组（票 34，2026-10-28）────────────────────────────────────
+ *
+ * 三组（图片 / 视频 / 文本）各带一个小标题与数量。照参考项目
+ * `canvas-side-panel.tsx:428` 的 `ASSET_GROUPS`，但我们没引 antd ——
+ * 所以标题是普通 div + 这两个类，不是 `Typography.Title`。 */
+.canvasSideGroupHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 4px;
+  padding: 0 2px;
+  font-size: var(--text-ewb-caption);
+  font-weight: 600;
+  color: var(--dsw-alias-label-secondary);
+}
+.canvasSideGroupHead:first-child { margin-top: 0; }
+.canvasSideGroupCount {
+  padding: 0 4px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--v1-line) 60%, transparent);
+  font-size: var(--text-ewb-caption);
+  font-weight: 400;
+  color: var(--v1-dim);
+}
+
+/* 文本素材那一格：**不画媒体占位**（画一个裂图的空框比不画更糟）。
+ *
+ * ⚠️ 宽度要放宽：图片那格 72px 是给缩略图定的，文本要塞两行字。 */
+.canvasSideAsset:has(.canvasSideAssetText) {
+  width: 100%;
+}
+.canvasSideAssetText {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 4px 5px;
+  text-align: left;
+}
+.canvasSideAssetTextTitle {
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-ewb-caption);
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+.canvasSideAssetTextBody {
+  /* 两行截断：摘要要能看出是哪一条，又不能把列表撑成一屏一条。 */
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  font-size: var(--text-ewb-caption);
+  line-height: 1.4;
+  color: var(--v1-dim);
+}
+.canvasSideAssetTextMeta {
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+  opacity: 0.7;
+}
+/* 读不出来的那一项：把原因写在格子里，不要静默成一张裂图。 */
+.canvasSideAssetProblem {
+  padding: 0 3px 3px;
+  font-size: var(--text-ewb-caption);
+  line-height: 1.3;
+  color: #ff8a8a;
+}
+
+/* 拖宽把手：贴着右边缘，半挂在外面（照参考项目 `:118`）。 */
+.canvasSideResize {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  background: transparent;
+}
+.canvasSideResize:hover { background: rgba(124, 156, 255, 0.28); }
+
+/* ── 节点设置面板（契约 CD 第五节）────────────────────────────────── */
+
+/* 挂点：绝对定位在画布层，按节点的屏幕坐标放。 */
+.nodePanelAnchor {
+  position: absolute;
+  z-index: 12;
+  transform: translateX(-50%);
+}
+
+/* ★ 挂在**节点里面**的设置面板（票 35，2026-10-28）。
+ *
+ * 照参考项目 `canvas-node.tsx:483`：`absolute left-1/2 top-full z-[70] -translate-x-1/2`。
+ * 挂在节点的包装层（`.contentNodeWrap`，不裁剪）里 —— 所以它天然跟着节点移动、
+ * 跟着画布缩放，不再需要按屏幕坐标算位置。
+ *
+ * ⚠️ 与上面那个 `.nodePanelAnchor` 的区别：那一个是**旧的**挂画布层做法，
+ * 位置由 JS 算屏幕坐标；这一个挂在节点里，位置由 CSS 定。两者现在都还在，
+ * 是因为图像操作浮层（蒙版 / 裁剪）仍然留在画布层（它要拿节点的 `<img>` 做像素操作，
+ * 挂进节点里会和节点自己的 `onClick` 抢事件）。 */
+.nodePanelInNode {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  z-index: 12;
+  padding-top: 8px;
+  transform: translateX(-50%);
+  /* 面板比节点宽，`max-width` 不设的话窄节点上会被挤成一条。 */
+  max-width: min(268px, 92vw);
+}
+.nodePanel {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  width: 268px;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--v1-line);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-elevated, #1b1c1f);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+}
+.nodePanelHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.nodePanelTitle {
+  font-size: var(--text-ewb-caption);
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+.nodePanelBtn {
+  padding: 1px 7px;
+  border: 1px solid var(--v1-line);
+  border-radius: 5px;
+  background: transparent;
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+  cursor: pointer;
+}
+.nodePanelBtn:hover { color: var(--dsw-alias-label-primary); border-color: var(--v1-edge-hot); }
+.nodePanelRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.nodePanelKey {
+  flex: 0 0 46px;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+}
+.nodePanelArea {
+  flex: 1 1 auto;
+  min-height: 52px;
+  padding: 4px 6px;
+  border: 1px solid var(--v1-line);
+  border-radius: 6px;
+  background: transparent;
+  resize: vertical;
+  font-family: inherit;
+  font-size: var(--text-ewb-caption);
+  line-height: 1.6;
+  color: var(--dsw-alias-label-primary);
+  outline: none;
+}
+.nodePanelArea:focus { border-color: var(--v1-edge-hot); }
+.nodePanelInput {
+  flex: 1 1 auto;
+  min-width: 0;
+  padding: 3px 6px;
+  border: 1px solid var(--v1-line);
+  border-radius: 6px;
+  background: transparent;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-primary);
+  outline: none;
+}
+.nodePanelInput:focus { border-color: var(--v1-edge-hot); }
+.nodePanelUnit {
+  flex: 0 0 auto;
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+}
+.nodePanelPrimary {
+  padding: 4px 14px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(124, 156, 255, 0.22);
+  font-size: var(--text-ewb-caption);
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+.nodePanelPrimary:hover:not(:disabled) { background: rgba(124, 156, 255, 0.34); }
+
+/* ── 缩放控件与快捷键说明（契约 CD 第七节）────────────────────────── */
+
+/* ══ 右下角浮层（票 56）：两边共用这一套 ══════════════════════════════
+ *
+ * 用户 2026-10-29 丙组 12-17 + 表三：
+ *   · 位置**留右下角**（参考在左下，我们不照抄 —— 左边有导航栏会撞）
+ *   · **窄时整组隐藏**（丙 16），不是缩图标、不是折行
+ *   · 文字换图标（丙 17），说明进 `title`
+ *   · 执行画布**多自动排版**（丙 13），内容画布没有
+ *
+ * ## 类名前缀为什么是 `canvasCorner*`
+ *
+ * 这一组原来叫 `.canvasZoom*`（只管缩放），现在管小地图 / 适配 / 缩放 /
+ * 步数 / 快捷键 / 自动排版 —— 「zoom」这个名字已经说不全。
+ * 改名之后 `grep canvasZoom` 应该只剩注释里的历史说明。
+ *
+ * ⚠️ `.canvasShortcuts*`（快捷键浮层）**没改名**：它是浮层的子块、不是一个控件，
+ * 而且它在 `tests/content-canvas*` 里有引用。 */
+.canvasCorner {
+  position: absolute;
+  right: 10px;
+  bottom: 10px;
+  /* 层级要高于小地图（6）—— 否则缩放条被压住点不到（2026-10-26 那个真 bug）。 */
+  z-index: 11;
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 7px;
+  border: 1px solid var(--v1-line);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-elevated, #1b1c1f);
+  /* 整组作为一个查询容器：窄了把自己藏掉 —— 容器查询不能作用于容器自己，
+   * 所以 `container-type` 挂在**外层画布区**（见下面 `.canvasCorner` 的窄屏规则）。 */
+}
+.canvasCornerBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--v1-dim);
+  cursor: pointer;
+}
+.canvasCornerBtn:hover { color: var(--dsw-alias-label-primary); }
+.canvasCornerBtn[data-on] {
+  background: rgba(124, 156, 255, 0.16);
+  color: var(--dsw-alias-label-primary);
+}
+/* 「?」那个字符（快捷键入口）—— 它是唯一还用字符的一颗，
+ * 因为 `icons.tsx` 里没有「问号/键盘」图标，而它必须一眼认出来。
+ * 用一个 span 而不是按钮文字：判据 4 查的是按钮 `textContent` 为空。 */
+.canvasCornerHelpMark {
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  line-height: 1;
+}
+.canvasCornerSlider {
+  width: 108px;
+  accent-color: #7c9cff;
+}
+.canvasCornerPct {
+  flex: 0 0 40px;
+  text-align: right;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-secondary);
+}
+/* 撤销步数：一条小字，常显（判据 5）。与按钮 disabled 同源。 */
+.canvasCornerHint {
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+  white-space: nowrap;
+}
+/* 自动排版那一小团（只有执行画布有）：两个方向合在一个圆角框里。
+ * 与原来的 `.layoutGroup` 同形，只是搬了位置。 */
+.canvasCornerLayout {
+  display: flex;
+  align-items: stretch;
+  height: 22px;
+  border: 1px solid var(--v1-line);
+  border-radius: 5px;
+  overflow: hidden;
+}
+.canvasCornerLayoutBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  border: none;
+  background: transparent;
+  color: var(--v1-dim);
+  cursor: pointer;
+}
+.canvasCornerLayoutBtn + .canvasCornerLayoutBtn { border-left: 1px solid var(--v1-line); }
+.canvasCornerLayoutBtn:hover { background: var(--dsw-alias-interactive-bg-hover); color: var(--dsw-alias-label-primary); }
+.canvasCornerLayoutBtn[data-on] {
+  background: color-mix(in srgb, var(--v1-accent) 18%, transparent);
+  color: var(--v1-accent);
+}
+.canvasShortcuts {
+  position: absolute;
+  right: 0;
+  bottom: 34px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  width: 244px;
+  padding: 8px 10px;
+  border: 1px solid var(--v1-line);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-elevated, #1b1c1f);
+  box-shadow: 0 10px 28px rgba(0, 0, 0, 0.38);
+}
+.canvasShortcutsHead {
+  font-size: var(--text-ewb-caption);
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+.canvasShortcutsRow {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+.canvasShortcutsKeys {
+  flex: 0 0 108px;
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-secondary);
+}
+.canvasShortcutsWhat {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+}
+
+/* 网格样式切换（契约 CD 第九条）。 */
+
+/* 「模拟落位」保留成一个不在视觉流里的小按钮（测试与手验都能点到）。 */
+.canvasHiddenTestBtn {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: auto;
+}
+
+/* ── 节点：新加的那几件（改尺寸、改名、悬浮工具条）──────────────── */
+
+/* 四角拖动手柄。 */
+.contentResize {
+  position: absolute;
+  z-index: 6;
+  width: 9px;
+  height: 9px;
+  border: 1px solid var(--v1-edge-hot);
+  border-radius: 2px;
+  background: var(--dsw-alias-bg-elevated, #1b1c1f);
+  opacity: 0;
+}
+.contentNode:hover .contentResize,
+.react-flow__node.selected .contentResize { opacity: 1; }
+/* 四个角各自贴边（手柄本身 9px，向外偏 4px 让它压在角上）。 */
+.contentResize_tl { top: -4px; left: -4px; cursor: nwse-resize; }
+.contentResize_tr { top: -4px; right: -4px; cursor: nesw-resize; }
+.contentResize_bl { bottom: -4px; left: -4px; cursor: nesw-resize; }
+.contentResize_br { bottom: -4px; right: -4px; cursor: nwse-resize; }
+
+/* 名称的可编辑输入框（双击标题改名）。 */
+.contentNodeNameInput {
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  z-index: 7;
+  width: 76px;
+  padding: 1px 3px;
+  border: 1px solid var(--v1-edge-hot);
+  border-radius: 3px;
+  background: var(--dsw-alias-bg-elevated, #1b1c1f);
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-primary);
+  outline: none;
+}
+
+/* 文本节点的「没内容」占位（不是空 textarea，双击才进编辑）。 */
+.contentEmptyText {
+  display: flex;
+  width: 100%;
+  height: 100%;
+  align-items: center;
+  justify-content: center;
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+  cursor: text;
+}
+
+/* 悬浮工具条（契约 CD 第六节）。 */
+.contentHoverBar {
+  position: absolute;
+  top: -26px;
+  left: 50%;
+  z-index: 8;
+  display: none;
+  transform: translateX(-50%);
+  gap: 2px;
+  padding: 2px 3px;
+  border: 1px solid var(--v1-line);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-elevated, #1b1c1f);
+  white-space: nowrap;
+}
+.contentNode:hover .contentHoverBar,
+.contentConfig:hover .contentHoverBar { display: flex; }
+.contentHoverBtn {
+  padding: 1px 5px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+  cursor: pointer;
+}
+.contentHoverBtn:hover {
+  color: var(--dsw-alias-label-primary);
+  background: rgba(255, 255, 255, 0.06);
+}
+
+/* ── 分组框（契约 CE，照参考项目 canvas-node.tsx:516 的 GroupNodeContent）──
+ *
+ * 与「一块内容」的观感**故意相反**：内容节点不画边框不画标题（计划 §三 3.2），
+ * 组反过来要明显是一条虚线框 + 左上角名字 + 成员数 —— 不然用户看不出那块空白是框。
+ * 参考项目也是这么画的（`borderStyle: 'dashed'`、`background: 'transparent'`）。
+ */
+.contentGroup {
+  width: 100%;
+  height: 100%;
+  border: 2px dashed var(--v1-line);
+  border-radius: 18px;
+  background: transparent;
+  overflow: visible;
+}
+.contentGroupSelected {
+  border-color: var(--dsw-alias-brand-primary, #4d6bfe);
+  box-shadow: 0 0 0 2px rgba(77, 107, 254, 0.18);
+}
+.contentGroupHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 4px;
+  font-size: var(--text-ewb-caption);
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+}
+.contentGroupGlyph {
+  flex: 0 0 auto;
+  opacity: 0.55;
+}
+.contentGroupCount {
+  flex: 0 0 auto;
+  font-weight: 400;
+  color: var(--v1-dim);
+}
+
+/* ── 节点运行态覆盖层（契约 CH：生成中 / 失败重试）──
+ *
+ * 半透明盖在节点内容上，**不替换内容**：重跑时节点里已经有上一张图，
+ * 换掉会让用户以为图丢了。
+ */
+.contentRunOverlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  background: rgba(12, 13, 16, 0.72);
+  z-index: 5;
+}
+.contentRunFailed {
+  background: rgba(48, 18, 18, 0.82);
+}
+.contentRunSpinner {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 2px solid rgba(255, 255, 255, 0.22);
+  border-top-color: var(--dsw-alias-brand-primary, #4d6bfe);
+  animation: contentRunSpin 0.9s linear infinite;
+}
+@keyframes contentRunSpin {
+  to { transform: rotate(360deg); }
+}
+.contentRunText {
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-primary);
+  font-variant-numeric: tabular-nums;
+}
+.contentRunErr {
+  max-width: 260px;
+  padding: 0 12px;
+  font-size: var(--text-ewb-caption);
+  line-height: 1.5;
+  color: #f0a9a9;
+  text-align: center;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+.contentRunBtn {
+  padding: 3px 10px;
+  border: 1px solid var(--v1-line);
+  border-radius: 6px;
+  background: var(--dsw-alias-bg-elevated, #1b1c1f);
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+.contentRunBtn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.nodePanelHint {
+  min-width: 0;
+  flex: 1 1 auto;
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+  line-height: 1.45;
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+ * 参考图选择（契约 CJ）
+ *
+ * 原来这一格是让用户手填产物 id 的输入框；改成「挑一张」之后需要
+ * 缩略图、名字、移除按钮、候选列表这几块样式。
+ *
+ * ⚠️ 只新增，不动上面任何既有类的值。
+ * ══════════════════════════════════════════════════════════════════════ */
+
+/* 已选/未选那一格的外框：未选时只包一个按钮，已选时是「缩略图 + 名字 + 移除」。 */
+.nodePanelRefBox {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  align-items: center;
+  gap: 6px;
+}
+
+/* 已选缩略图：36px 方块，圆角与裁剪跟素材网格那张一致。 */
+.nodePanelRefThumb {
+  display: block;
+  width: 36px;
+  height: 36px;
+  flex: 0 0 auto;
+  border: 1px solid var(--v1-line);
+  border-radius: 6px;
+  object-fit: cover;
+}
+
+/* 已选名字 + 候选名字：单行省略（文件名可能很长）。 */
+.nodePanelRefName,
+.nodePanelRefItemName {
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 候选列表：面板宽约 300，一行一个（缩略图 + 名字 + 来源标签）。 */
+.nodePanelRefList {
+  display: flex;
+  max-height: 190px;
+  flex-direction: column;
+  gap: 3px;
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--v1-line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.18);
+}
+
+.nodePanelRefItem {
+  display: flex;
+  min-width: 0;
+  align-items: center;
+  gap: 7px;
+  padding: 3px 5px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+}
+.nodePanelRefItem:hover { border-color: var(--v1-edge-hot); background: rgba(255, 255, 255, 0.05); }
+
+.nodePanelRefItemThumb {
+  display: block;
+  width: 28px;
+  height: 28px;
+  flex: 0 0 auto;
+  border-radius: 4px;
+  object-fit: cover;
+}
+
+/* 「素材」/「画布」来源标签：贴右，弱色，不抢名字。 */
+.nodePanelRefItemFrom {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0 4px;
+  border-radius: 3px;
+  background: rgba(255, 255, 255, 0.06);
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+ * 图像操作浮层（用户 m02814：#59 裁剪 / #62 拆图 / #65 抓帧）
+ *
+ * ⚠️ 只新增，不动上面任何既有类的值。
+ * ══════════════════════════════════════════════════════════════════════ */
+
+/* 浮层本体：挂在画布层，宽度与设置面板一致，位置由调用方给。 */
+.imageOpPanel {
+  display: flex;
+  width: 300px;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 10px 10px;
+  border: 1px solid var(--v1-line);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-elevated, #1b1d21);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.38);
+  pointer-events: auto;
+}
+
+/* 比例 / 抓哪一帧的那一排小按钮。 */
+.imageOpRatios {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.imageOpChip {
+  padding: 2px 7px;
+  border: 1px solid var(--v1-line);
+  border-radius: 5px;
+  background: transparent;
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+  cursor: pointer;
+}
+.imageOpChip:hover { border-color: var(--v1-edge-hot); color: var(--dsw-alias-label-primary); }
+.imageOpChip:disabled { opacity: 0.45; cursor: not-allowed; }
+.imageOpChip[data-active] {
+  border-color: var(--v1-edge-hot);
+  background: rgba(124, 156, 255, 0.18);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 四个数值输入框（左 / 上 / 宽 / 高）或行列数：一行排开。 */
+.imageOpFields {
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+
+.imageOpField {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+}
+
+.imageOpField input {
+  width: 56px;
+  padding: 2px 5px;
+  border: 1px solid var(--v1-line);
+  border-radius: 5px;
+  background: rgba(0, 0, 0, 0.24);
+  color: var(--dsw-alias-label-primary);
+  font-size: var(--text-ewb-caption);
+}
+.imageOpField input:focus { border-color: var(--v1-edge-hot); outline: none; }
+
+/* ══════════════════════════════════════════════════════════════════════
+ * 批量节点（用户 m02814 #72–74）
+ *
+ * ⚠️ 只新增，不动上面任何既有类的值。
+ * ══════════════════════════════════════════════════════════════════════ */
+
+.contentBatch {
+  display: flex;
+  min-height: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* 头部：几张 + 展开/收起。 */
+.contentBatchHead {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 6px;
+  padding: 0 2px;
+  font-size: var(--text-ewb-caption);
+  color: var(--v1-dim);
+}
+
+/* 展开态：网格摊开每张。 */
+.contentBatchGrid {
+  display: grid;
+  min-height: 0;
+  flex: 1 1 auto;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 4px;
+  overflow: auto;
+}
+
+.contentBatchCell {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  gap: 2px;
+  border: 1px solid var(--v1-line);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.contentBatchThumb {
+  display: block;
+  width: 100%;
+  height: 74px;
+  object-fit: cover;
+}
+
+/* 每张下面那一排操作：设主图 / 移除 / 下载。 */
+.contentBatchOps {
+  display: flex;
+  gap: 3px;
+  padding: 2px;
+}
+
+.contentBatchOps .contentHoverBtn,
+.contentBatchOps a {
+  flex: 1 1 auto;
+  padding: 1px 4px;
+  font-size: var(--text-ewb-caption);
+  text-align: center;
+  text-decoration: none;
+}
+
+/* 当前主图那一格标出来（不然用户看不出哪张是主图）。 */
+.contentBatchOps .contentHoverBtn[data-active] {
+  border-color: var(--v1-edge-hot);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+ * @ 提及下拉（用户 m02814 #76）
+ *
+ * ⚠️ 只新增，不动上面任何既有类的值。
+ * ══════════════════════════════════════════════════════════════════════ */
+
+.mentionWrap {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  flex: 1 1 auto;
+  flex-direction: column;
+}
+
+.mentionList {
+  position: absolute;
+  top: 100%;
+  left: 0;
+  z-index: 12;
+  display: flex;
+  max-height: 160px;
+  width: 100%;
+  flex-direction: column;
+  gap: 2px;
+  overflow: auto;
+  margin-top: 2px;
+  padding: 4px;
+  border: 1px solid var(--v1-line);
+  border-radius: 8px;
+  background: var(--dsw-alias-bg-elevated, #1b1d21);
+  box-shadow: 0 8px 20px rgba(0, 0, 0, 0.35);
+}
+
+.mentionItem {
+  padding: 3px 6px;
+  border: 1px solid transparent;
+  border-radius: 5px;
+  background: transparent;
+  text-align: left;
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-primary);
+  cursor: pointer;
+}
+.mentionItem:hover { border-color: var(--v1-edge-hot); background: rgba(255, 255, 255, 0.05); }
+
+/* ══════════════════════════════════════════════════════════════════════
+ * 局部重绘的蒙版涂抹（用户 m02814 #60）
+ *
+ * ⚠️ 只新增，不动上面任何既有类的值。
+ * ══════════════════════════════════════════════════════════════════════ */
+
+/* 底图与涂抹层叠在一起：底图在下、canvas 在上，尺寸都由容器决定。 */
+.maskWrap {
+  position: relative;
+  display: block;
+  width: 100%;
+  max-height: 260px;
+  overflow: hidden;
+  border: 1px solid var(--v1-line);
+  border-radius: 8px;
+  background: rgba(0, 0, 0, 0.3);
+  touch-action: none;
+  cursor: crosshair;
+}
+
+.maskBase {
+  display: block;
+  width: 100%;
+  height: auto;
+  user-select: none;
+}
+
+.maskCanvas {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* ── 画布设置抽屉（用户 m03414：A7，「参考执行画布的设置」）────────────
+ *
+ * 挂画布右上角、在工具栏与网格切换之下。宽度固定 268px —— 设置项是
+ * 短标签加控件，再宽只会让眼睛横跳。
+ */
+.canvasSettingsDrawer {
+  position: absolute;
+  top: 92px;
+  right: 12px;
+  z-index: 14;
+  width: 268px;
+  max-height: calc(100% - 120px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--v1-line);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-elevated, #1b1c1f);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+  font-size: var(--text-ewb-meta);
+  color: var(--dsw-alias-label-primary);
+}
+.canvasSettingsHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--v1-line);
+}
+.canvasSettingsTitle {
+  font-weight: 600;
+}
+.canvasSettingsGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.canvasSettingsLabel {
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+.canvasSettingsRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.canvasSettingsField {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.canvasSettingsFieldLabel {
+  color: var(--dsw-alias-label-secondary);
+}
+.canvasSettingsInput {
+  width: 64px;
+  padding: 2px 6px;
+  border: 1px solid var(--v1-line);
+  border-radius: 5px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+.canvasSettingsValue {
+  min-width: 44px;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+}
+.canvasSettingsCheck {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+}
+.canvasSettingsHint {
+  color: var(--dsw-alias-label-secondary);
+  font-size: var(--text-ewb-meta);
+  line-height: 1.5;
+}
+.canvasSettingsKeys {
+  width: 100%;
+  border-collapse: collapse;
+}
+.canvasSettingsKeys td {
+  padding: 2px 0;
+  vertical-align: top;
+}
+.canvasSettingsKey {
+  width: 48%;
+  padding-right: 6px;
+  color: var(--dsw-alias-label-secondary);
+  font-family: var(--ds-font-family-code, ui-monospace, Consolas, 'Microsoft YaHei');
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * 画布浮层 · 底部主操作位（票 43 / 票 55）
+ * ════════════════════════════════════════════════════════════════════
+ *
+ * 用户 2026-10-29 定案甲 5、6 与戊 22：
+ * 「主操作放底部中间悬浮，也就是用参考的模式。注意，内容画布的节点按钮就是
+ * 执行画布的开始停止等执行按钮一个级别的。二者逻辑不一样但定位相同。」
+ *
+ * ## 定位：**相对画布区居中**
+ *
+ * `left: 0; right: 0` + `justify-content: center` —— 居中的基准是**画布区**，
+ * 不是工作台右列。用户丙组第 15 条点明「我们的中间栏应该是画布居中」。
+ *
+ * ⚠️ **不要写成 `left: 50%; transform: translateX(-50%)`**：
+ * 那个写法在 `left: 0; right: 0` 的容器里结果一样，但只要容器有 padding
+ * 或滚动条就会偏 —— 而这一层将来可能要加内边距。
+ * 判据 2 用「左右两端空白相等（±4px）」钉住结果。
+ *
+ * ## 为什么这一条**有底**，而顶部条没有
+ *
+ * 参考的顶部条是 `pointer-events-none` 只让按钮自己有底（用户：「背景就是画布」）；
+ * 底部主操作位在参考里是一条 `rounded-xl border backdrop-blur` 的胶囊。
+ * 有底是为了让「主操作」从画布里浮出来 —— 它是**动作**，不是**信息**。
+ *
+ * ## 容器 `pointer-events` 为什么是 none
+ *
+ * 胶囊条横在画布底部，如果整层吃事件，用户就点不到它背后的画布了。
+ * 所以外层 `none`（只用来定位与居中），**胶囊自己** `auto`。
+ */
+.canvasDockWrap {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 20px;
+  z-index: 9;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+/* 胶囊本体（照参考 `canvas-toolbar.tsx:99` 的形状）。 */
+.canvasDock {
+  pointer-events: auto;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 56px;
+  padding: 0 10px;
+  border-radius: 12px;
+  border: 1px solid var(--v1-line);
+  /* 轻模糊底：让胶囊从画布上浮起来，但底下的网格还看得见。
+   * 用 `color-mix` 而不是给 `background` 直接写 rgba —— 它跟着主题令牌走。 */
+  background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 88%, transparent);
+  backdrop-filter: blur(10px);
+  /* 深度：光从上方来 —— 只加向下投影，不加负偏移。 */
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.28);
+}
+
+/* 三段：模式 / 撤销重做 / 主操作。 */
+.canvasDockGroup {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+/* 段间竖线（照参考的 `<Divider>`）。 */
+.canvasDockDivider {
+  width: 1px;
+  height: 20px;
+  margin: 0 4px;
+  background: var(--v1-line);
+  flex: 0 0 auto;
+}
+
+/* 胶囊里的一颗按钮：比顶部条那几颗大一号（56 高的条里放 36 的按钮）。
+ * 36 而不是 40 —— 上下各留 10px，视觉上才是「浮在条里」而不是「塞满」。 */
+.canvasDockBtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  padding: 0;
+  border-radius: 9px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--v1-ink);
+  cursor: pointer;
+  transition: background-color 160ms, border-color 160ms, box-shadow 160ms;
+}
+.canvasDockBtn:hover {
+  border-color: color-mix(in srgb, var(--v1-accent) 45%, transparent);
+  background: color-mix(in srgb, var(--v1-accent) 10%, transparent);
+}
+.canvasDockBtn:active { transform: translateY(1px); }
+.canvasDockBtn:focus-visible { outline: 2px solid var(--v1-accent); outline-offset: 1px; }
+.canvasDockBtn[disabled] { opacity: 0.35; cursor: default; transform: none; }
+/* 「已开」态（移动模式、设置已开、运行中）。 */
+.canvasDockBtn[data-on] {
+  border-color: color-mix(in srgb, var(--v1-accent) 60%, transparent);
+  background: color-mix(in srgb, var(--v1-accent) 18%, transparent);
+  color: var(--v1-accent);
+}
+/* 主操作那一颗（运行 / 停止、加节点的入口）：用语义色强调。 */
+.canvasDockBtn[data-primary] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-success-primary) 50%, transparent);
+  color: var(--dsw-alias-state-success-primary);
+}
+.canvasDockBtn[data-danger] {
+  border-color: color-mix(in srgb, var(--dsw-alias-state-error-primary) 50%, transparent);
+  color: var(--dsw-alias-state-error-primary);
+}
+
+/* ── 窄屏按序少显示（票 55 判据 6）──────────────────────────────
+ *
+ * 用户 2026-10-29 定的顺序：**锁定 → 主题 → 撤销/重做 依次少显示**；
+ * **设置与名称常驻**。
+ *
+ * ## 为什么用容器查询而不是媒体查询
+ *
+ * 画布宽度取决于**工作台右列有多宽**，与浏览器窗口不是一回事
+ * （窗口很宽、右列拖窄时画布一样会窄）。所以按**画布区宽度**判。
+ *
+ * ## 为什么查询名是 `ewb-canvas-dock` 挂在 `.canvasDockWrap` 上
+ *
+ * 容器查询不能作用于容器自己，只能作用于后代 —— 所以 `container-type`
+ * 挂在 wrap 上、规则作用于里面的按钮。
+ * ⚠️ wrap 是 `display: flex` 的定位层，给它 `container-type: inline-size`
+ * 会不会影响布局？不会：`inline-size` 只让它的**宽度**成为查询基准，
+ * 不改变它自己怎么被排版（它不是 flex/grid 的子项，是 absolute 的）。
+ *
+ * ## 阈值怎么定的
+ *
+ * 胶囊在三段都全时约 **430px** 宽（实测：10 颗 36px 按钮 + 2 条竖线 + 内边距；
+ * 内容是 3 颗（模式 1 + 撤销重做 2 + 关 3 颗），执行是 4 颗）。
+ * 留出两侧各 24px 的呼吸空间 → 画布窄于 **520px** 时开始按序收。
+ *
+ * 序号与理由写在每一档上面。
+ */
+.canvasDockWrap { container-type: inline-size; container-name: ewb-dock; }
+
+/* 第一档（≤520px）：先收**扩展入口**（锁定 / 小地图 / 图例 / 快照 / 恢复 / 文件类）。
+ * 这些都是「偶尔用一次」的，而且右键菜单与快捷键里都有等价入口。 */
+@container ewb-dock (max-width: 520px) {
+  .canvasDockBtn[data-collapse="1"] { display: none; }
+}
+/* 第二档（≤420px）：收**主题**（用户指定的顺序：锁定 → 主题）。
+ * 主题切换不常用，而且它只影响观感、不影响能不能干活。 */
+@container ewb-dock (max-width: 420px) {
+  .canvasDockBtn[data-collapse="2"] { display: none; }
+}
+/* 第三档（≤340px）：收**撤销 / 重做**（用户指定的顺序最后）。
+ * 撤销重做有快捷键（Ctrl+Z / Ctrl+Y），收掉之后仍有等价入口。
+ * ⚠️ **设置与名称不在任何一档里** —— 用户点名它们常驻。 */
+@container ewb-dock (max-width: 340px) {
+  .canvasDockBtn[data-collapse="3"] { display: none; }
+}
+
+/* ── 右下角浮层：窄时**整组隐藏**（票 56，用户丙 16）──────────────
+ *
+ * 用户原话：「画面过窄的情况下右下角（图 / 复位 / 缩放比 / 快捷键）隐藏」。
+ *
+ * ## 三条「不是」
+ *
+ * · **不是**缩成图标（它本来就是图标了）
+ * · **不是**折行（那一排只有 300 出头，折成两行会挡住画布下缘）
+ * · **不是**变透明 / `visibility`（那还占着点击区，用户点了没反应更糟）
+ * 是 `display: none` —— 整组一起消失。
+ *
+ * ## 阈值怎么定的
+ *
+ * 全显时这一排约 **330px**（滑杆 108 + 百分比 40 + 5 颗按钮 22×5 + 间隙 +
+ * 内边距；执行画布多自动排版那一小团约 +50）。
+ * 画布区窄到 **360px** 以下时，它已经占了宽度的九成 —— 那不是「浮层」，
+ * 是把画布盖掉了。所以取 **360**。
+ *
+ * ## 为什么查询基准是「画布区宽度」而不是窗口宽度
+ *
+ * 画布宽度取决于**工作台右列有多宽**，与浏览器窗口不是一回事
+ * （窗口很宽、右列拖窄时画布一样会窄）。所以用容器查询，
+ * `container-type` 挂在画布容器上（`.contentCanvasStage` / 执行画布的 `.canvas`）。
+ *
+ * ⚠️ **本文件不能给那两个容器加 `container-type`** —— 它们分别在别人的段里
+ * （`.contentCanvasStage` 归票 54、`.canvas` 在 workflow-canvas.module.css）。
+ * 所以这里用**媒体查询兜底**：窗口窄到 520px 时整组也藏。
+ * 精确的画布内查询由画布自己那一层的容器挂载（见 `workflow-canvas.module.css`
+ * 的 `.canvas` 与 `ContentCanvas` 的 stage）—— 两处都给，取更严的那个。
+ *
+ * 说明白：**jsdom 量不出像素**，这条只能由真机确认。判据 7 验的是
+ * 「规则存在 + 用的是 display:none + 整组是一个容器」这三件可验的事实。
+ */
+@media (max-width: 520px) {
+  .canvasCorner { display: none; }
+}
+@container ewb-canvas (max-width: 360px) {
+  .canvasCorner { display: none; }
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * 画布浮层 · 设置面板（票 57，2026-10-29）
+ * ════════════════════════════════════════════════════════════════════
+ *
+ * 用户 2026-10-29 原话：
+ *
+ * > 用浮窗。两边的设置是可以用一个样式对吧？是不是用一个样式后就可以自动保证
+ * > 文字大小、间距之类的统一？如果是，找，或者做成样式，尽量不要硬编码。
+ * > 我指的是整体样式不是控件样式。
+ *
+ * ## 这七个类是**两个画布共用**的（不是各写一份）
+ *
+ * 执行画布的设置原来是右侧全高抽屉，内容画布是右上角浮窗 —— 宽 340 vs 268、
+ * 标题行一个有「恢复默认」一个没有、每项排法一个扁平行一个分组块。
+ * 现在两边都用这一套，浮窗形状、字号、间距由**这里一处**决定。
+ *
+ * ⚠️ **只放整体样式，不放控件样式**（用户明确那句「整体样式不是控件样式」）：
+ * 滑杆、胶囊按钮、下拉框各自留在自己的文件里 —— 两边的控件本来就长得不一样，
+ * 强行统一只会让某一侧变形。这里管的是「面板多宽、组与行怎么排、字多大、间距几档」。
+ *
+ * ## 字号与间距取令牌，不写死 px
+ *
+ * 用户原话里有「尽量不要硬编码」。字号只用 `--text-ewb-meta` /
+ * `--text-ewb-label` / `--text-ewb-caption` 三档；间距只有 5 与 10 两档。
+ *
+ * ## 与 `.canvasSettings*` 那一段的关系
+ *
+ * 那一段是内容画布**原来自己那套**（票 43 建的）。本票让两边都改用
+ * `canvasFloat*`，所以 `.canvasSettings*` 里**只剩内容画布独有的零件**
+ * （输入框、勾选行、两个选择器盒），面板外壳与分组行全部换成共用类。
+ */
+
+/* 容器：右上角浮窗，让过顶部悬浮条（`top: 92px`），不拉满高度。 */
+.canvasFloatPanel {
+  position: absolute;
+  top: 92px;
+  right: 12px;
+  z-index: 14;
+  width: 268px;
+  max-height: calc(100% - 120px);
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px 12px;
+  border: 1px solid var(--v1-line);
+  border-radius: 10px;
+  background: var(--dsw-alias-bg-elevated, #1b1c1f);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.42);
+  font-size: var(--text-ewb-meta);
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 标题行：标题 + 撑开的空档 + 恢复默认 + ×。 */
+.canvasFloatHead {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--v1-line);
+}
+
+.canvasFloatTitle {
+  font-size: var(--text-ewb-label);
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+}
+
+/* 标题行右侧那颗 ×。 */
+.canvasFloatClose {
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  border: 1px solid var(--v1-line);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--v1-ink);
+  cursor: pointer;
+  font-size: var(--text-ewb-label);
+  line-height: 1;
+}
+.canvasFloatClose:hover { border-color: var(--c-danger); color: var(--c-danger); }
+
+/* 一组：一个标题 + 若干行。组间距 10（与容器的 gap 一致，不叠两层）。 */
+.canvasFloatGroup {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+/* 一行：标签 + 控件 + 值 + 复位。**排法与控件无关**，所以进共用类。 */
+.canvasFloatRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* 说明小字：**只在「看不出后果的开关」下面出现**（用户丁 21）。
+ * 靠标签与单位就能看懂的那些不写。 */
+.canvasFloatHint {
+  padding: 2px 0 0;
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-secondary);
+  line-height: 1.5;
+  opacity: 0.85;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * 画布浮层 · 侧栏 tab 条（票 58，2026-10-29）
+ * ════════════════════════════════════════════════════════════════════
+ *
+ * 用户 2026-10-29 定案乙组第 9–11 条：
+ *
+ * > 现在两边都不要顶部栏，顶部在画布中悬浮，统一两边 tab 条样式。
+ * > 条目可以不强行一致，比如执行画布有标签，内容画布没有，但都有标题+说明。
+ * > 外观上应该近似。
+ *
+ * ## 这一票把两边对齐到哪
+ *
+ * | | 内容画布（原来就有） | 执行画布（本票新建） |
+ * |---|---|---|
+ * | 头部容器 | `.canvasSideTabs` | **同一个类** |
+ * | tab 按钮 | `.canvasSideTab` + `[data-on]` 背景填充 | 节点库的分类改用它 |
+ * | 折叠按钮 | `.canvasSideIconBtn` + SVG | **同一个类 + SVG**（原来是 `‹ / ›` 字符） |
+ * | 折叠后宽度 | 40px | **56px**（本票统一） |
+ *
+ * ⚠️ **控件样式不进这里**：tab 按钮的长相沿用 `.canvasSideTab`（本来就在
+ * `.canvasSide*` 那一段里），本段只补**标题**与**折叠后的宽度**两个新类。
+ */
+
+/* 侧栏标题（两边共用）。 */
+.canvasSidePanelTitle {
+  font-size: var(--text-ewb-label);
+  font-weight: 600;
+  color: var(--dsw-alias-label-primary);
+  white-space: nowrap;
+}
+
+/* 折叠后的窄条宽度：两边统一 56px（用户 2026-10-29：折叠后视觉宽度统一）。 */
+.canvasSideCollapsedWidth {
+  width: 56px;
+}
+
+/* 素材项那一行「类型 · 大小」（票 58 第 2 条：条目都有标题 + 说明）。
+ *
+ * ⚠️ 它挂在**同一个按钮**里，不新增一层包壳 —— 这样 `canvasSideGrid`
+ * 的列数完全不变（用户要求「网格密度不降到列表」）。
+ * 字号取 caption 档（比文件名小一档），颜色退到 secondary。 */
+.canvasSideAssetMeta {
+  display: block;
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-secondary);
+  line-height: 1.4;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * 画布浮层 · 背景与透明度（票 59，2026-10-29）
+ * ════════════════════════════════════════════════════════════════════
+ *
+ * 用户 2026-10-29 定案丙组 13 / 丁组 21：
+ *
+ * > 当前内容画布左下角的背景调整进设置中，不单独出现，设置去右上角。
+ * > 执行画布同理，增加背景设置，且增加透明度设置（参考线、点的透明度）
+ *
+ * ## 这一票把「背景三档」收到哪
+ *
+ * 画布上那排已经删了（`[data-ewb-grid]` 现在零命中），三颗按钮只在设置浮窗里
+ * （`CanvasSettingsPanel` 的「背景」组，钩子 `data-ewb-settings-grid`）。
+ *
+ * ## 三个透明度各自落在哪
+ *
+ * | 项 | 怎么生效 | 为什么这么做 |
+ * |---|---|---|
+ * | 画布底 | CSS 变量 `--ewb-canvas-bg`（`color-mix`） | **不能用元素的 `opacity`** —— 它作用于整棵子树，会把节点、连线、工具条一起变透明 |
+ * | 参考线 | 执行画布走 `--ewb-guide-opacity` 变量；内容画布走内联 `style.opacity` | 两处是两套 DOM，**接线是两处** |
+ * | 点 / 线图案 | 做在 `Background` 的 `color` 字符串里（`color-mix`） | React Flow 的 `Background` **没有 `opacity` 参数**（核过类型定义） |
+ *
+ * ⚠️ **本段只放这三件的公共部分**。控件长相（滑块 / 按钮）不进这里 ——
+ * 用户明确说「整体样式不是控件样式」。
+ */
+
+/* 三个透明度滑块共用的那一行（设置面板里）。
+ *
+ * 与 `.canvasFloatRow` 的区别：那一行是「标签 + 控件 + 值」的通用排法，
+ * 这一行要**带上取值范围**（0–100 的百分比），所以单独一条。
+ * 间距取 5（与 `canvasFloat*` 那套的档位一致）。 */
+.ewbOpacityRow {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+/* 百分比数字那一格：定宽右对齐，拖动时数字不跳。 */
+.ewbOpacityValue {
+  min-width: 38px;
+  text-align: right;
+  font-size: var(--text-ewb-caption);
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * 画布 · 连线（票 60，2026-10-29）
+ * ════════════════════════════════════════════════════════════════════
+ *
+ * 用户 2026-10-29 定案戊组 23：
+ *
+ * > 内容画布怎么就没连线了？不是有吗？只是规矩相对执行画布没那么多，别漏了，看参考。
+ *
+ * 形状照 `refs-projects/infinite-canvas/web/src/components/canvas/canvas-connections.tsx:33-57`：
+ * 一条透明粗描边负责接点击、一条可见细线负责看。**没有箭头**，左出右进。
+ *
+ * ⚠️ 这两条样式必须成对存在：命中区那条**不能**加 `pointer-events: none`，
+ * 可见线那条**必须**加。反过来的话表现是「点线选中时好时坏」——
+ * 因为可见线压在命中区上面，它接事件就把点击吃掉了。
+ */
+
+/* 命中区：透明、粗。要能接事件，所以 `pointer-events: stroke`。 */
+.contentEdgeHit {
+  cursor: pointer;
+  pointer-events: stroke;
+}
+
+/* 可见线：能看不接事件。 */
+.contentEdgeLine {
+  pointer-events: none;
+}
+
+/* ════════════════════════════════════════════════════════════════════
+ * 画布 · 通知条与计数（票 62，2026-10-29）
+ * ════════════════════════════════════════════════════════════════════
+ *
+ * ## 本段只放「内容画布独有的那两个」，通知条本身不在这里
+ *
+ * 通知条复用执行画布那个组件（`notices.tsx`），它的类在
+ * `workflow-canvas.module.css`（`noticeWrap` / `notice` / `notice_*` …）。
+ * **不复制一份到这里** —— 两份必然漂，而且执行画布还在用原版。
+ *
+ * ## 计数条为什么不复用执行画布那个 chip
+ *
+ * 执行画布那个是 `css_node_form.chip`，挂在 React Flow 的 `<Panel>` 上
+ * （位置由 Panel 决定）。内容画布没有 Panel（它把计数放在顶部悬浮条里），
+ * 复用那个类会让「chip 长什么样」与「它摆在哪」两件事混在一起。
+ */
+
+/* 顶部条里的计数（三条数，选中为 0 时不渲染那一项）。
+ *
+ * 字号取 `--text-ewb-meta`（与顶部条其它信息同一档），
+ * 数字用等宽数字，节点增加时不会左右跳。 */
+.contentCanvasCount {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  white-space: nowrap;
+  font-size: var(--text-ewb-meta);
+  color: var(--dsw-alias-label-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 「· 选中 N」那一截：选中是正在操作的东西，提一档颜色。 */
+.contentCanvasCountHot {
+  color: var(--dsw-alias-label-primary);
+}
+
+/* ── 窄屏收起顺序（票 62 定，写在注释里免得以后靠猜）────────────────
+ *
+ * **先收计数，再收主题，设置与关闭最后收。**
+ *   · 计数是「看一眼就好」的信息，收掉不损失能力；
+ *   · 主题在设置面板里也能改；
+ *   · 设置与关闭是入口，收掉就进不去了。
+ *
+ * ⚠️ 只收计数一条 —— 主题与设置那两颗的收起由票 54/55 的口径决定，
+ * 本票不改它们（改了要连带更新 `dom-render` 的顶部条断言，不是这票的活）。 */
+/* ⚠️ **不用容器查询**：本文件里没有以顶部条为容器的 `container-type`
+ * （全仓只有 `ewb-dock` 与 `ewb-toolbar` 两个容器名，都不是顶部条）。
+ * 自造一个名字会**永远不生效** —— 看着写了规则、实际没影。
+ *
+ * 而 `container-type` 要挂在 `.contentCanvasStage`（顶部条是它的后代的祖先），
+ * 那一段归票 54、本票不能加。所以用**媒体查询**兜底，与同文件
+ * `.canvasCorner` 那一档（`:2444` 起）同一个做法、同一个宽度阈值 520px。 */
+@media (max-width: 520px) {
+  .contentCanvasCount {
+    display: none;
+  }
+}

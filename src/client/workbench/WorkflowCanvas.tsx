@@ -212,6 +212,11 @@ export function clampLibW(w: number): number {
   return Math.max(LIB_W_MIN, Math.min(LIB_W_MAX, Math.round(w)))
 }
 
+/**
+ * Save the sidebar width in pixels, clamped to the supported range. A successful
+ * response with preferences also updates the in-memory preferences. The request
+ * is not awaited, and a rejected request is not handled here.
+ */
 function persistLibW(w: number): void {
   void saveUiPrefs({ libW: clampLibW(w) }).then(r => {
     if (r.ok && r.prefs !== undefined) adoptUiPrefs(r.prefs)

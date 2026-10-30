@@ -121,18 +121,14 @@ export function ratioValue(p: RatioPreset): number | null {
 }
 
 /**
- * 按比例预设把当前框**收进**一个等比的框（保持中心不变）。
+ * Fit a crop to an aspect ratio, then normalize it to the image bounds.
+ * The crop may shift at the bounds, and minimum-size normalization can alter
+ * the requested ratio.
  *
- * ## 为什么是「收进」而不是「撑满」
- *
- * 撑满会越界（超出的部分没有像素），用户看到的是框跑到图外面。
- * 所以在「中心不变」的前提下取**能放下的最大等比框**：
- * 先按宽度对，高度超了就改按高度对。
- *
- * @param r - 当前框（已归一化）。
- * @param p - 预设。`free` 时原样返回。
- * @param image - 原图宽高（用来算比例；缺省按正方形比例处理）。
- * @returns 等比框。
+ * @param r - Current normalized crop.
+ * @param p - Aspect ratio preset; `free` only normalizes the crop.
+ * @param image - Image dimensions in pixels; each omitted or nonpositive dimension defaults to 1.
+ * @returns The normalized crop.
  */
 export function applyRatioPreset(
   r: CropRect,
@@ -181,11 +177,12 @@ export interface SplitPiece extends CropRect {
  * 这里改成**算出每块的左/右边界再取整**：`round(i*w/cols)` 到 `round((i+1)*w/cols)`，
  * 相邻块边界重合、像素一块不丢。
  *
- * @param width - 原图宽（像素，必须 ≥1）。
- * @param height - 原图高（像素，必须 ≥1）。
- * @param rows - 切几行（≥1，非法值按 1 处理）。
- * @param cols - 切几列（≥1，非法值按 1 处理）。
- * @returns 从左到右、从上到下排好的块（归一化坐标）。
+ * @param width - Image width in pixels, rounded and clamped to at least 1; non-finite values use 1.
+ * @param height - Image height in pixels, rounded and clamped to at least 1; non-finite values use 1.
+ * @param rows - Row count, rounded and clamped to 1–16; non-finite values use 1.
+ * @param cols - Column count, rounded and clamped to 1–16; non-finite values use 1.
+ * @returns Pieces in row-major order with normalized coordinates. Pieces can
+ *   have zero width or height when there are more columns or rows than pixels.
  */
 export function splitRects(width: number, height: number, rows: number, cols: number): SplitPiece[] {
   const w = Math.max(1, Math.round(Number.isFinite(width) ? width : 1))

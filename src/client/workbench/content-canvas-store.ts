@@ -384,15 +384,11 @@ export function decodeDrag(raw: string): DragPayload | null {
 }
 
 /**
- * 落点：把「屏幕坐标」换算成「画布坐标」（拖放要给的那个位置）。
+ * Round an existing canvas position for use as a node's top-left corner.
+ * Screen coordinates must first be converted with React Flow's `screenToFlowPosition`.
  *
- * ⚠️ 真正换算要用 React Flow 的 `screenToFlowPosition`（它知道缩放与平移）；
- * 这个函数只是**把它包成可测的形状**：调用方传进来的已经是画布坐标时，
- * 这一步就只是往下传。加这一层是为了让「落点 → 节点 position」这条断言
- * 不必起一个真 React Flow 实例。
- *
- * @param pt - 画布坐标。
- * @returns 节点左上角坐标（现在是**落点即左上角**，不做居中偏移）。
+ * @param pt - Position in canvas coordinates.
+ * @returns Rounded canvas coordinates without a centering offset.
  */
 export function dropPosition(pt: { x: number, y: number }): { x: number, y: number } {
   /* 不做「减去节点一半宽高」的居中：用户拖到哪儿，节点左上角就在哪儿 ——
@@ -710,15 +706,14 @@ export function mergeRefs(
 export const HISTORY_LIMIT = 50
 
 /**
- * 复制一份快照。
+ * Copy the canvas state into a snapshot. Nodes, their positions and data,
+ * edges, and the viewport are copied shallowly; other nested values remain
+ * shared with the input.
  *
- * 为什么要逐层手抄而不是 `structuredClone`：快照里只有「节点数组 + 连线数组 + 三个数」，
- * 手抄一遍最省事，也不会在某天把某个不可克隆的东西（函数、类实例）悄悄带进节点里。
- *
- * @param nodes - 节点。
- * @param edges - 连线。
- * @param viewport - 视口。
- * @returns 一份独立快照。
+ * @param nodes - Canvas nodes.
+ * @param edges - Canvas edges.
+ * @param viewport - Canvas viewport.
+ * @returns A snapshot with shallow copies of the input objects.
  */
 export function snapshotOf(
   nodes: readonly ContentNode[],
@@ -941,10 +936,13 @@ export interface ApiResult<T> {
 }
 
 /**
- * 调一个内容板块接口。
- * @param path - 前缀之后的路径。
- * @param init - fetch 选项。
- * @returns 结果（永不抛）。
+ * Call a content API endpoint. Network failures and HTTP or API failures are
+ * returned as errors; a response that cannot be parsed as JSON is treated as
+ * an empty object.
+ * @param path - Path after the API prefix.
+ * @param init - Fetch options.
+ * @returns The response body or an error result.
+ * @throws {TypeError} If the parsed JSON response is null.
  */
 async function api<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
   let res: Response
@@ -963,8 +961,10 @@ async function api<T>(path: string, init?: RequestInit): Promise<ApiResult<T>> {
 }
 
 /**
- * 列画布库。
- * @returns 摘要数组（失败给空数组 + 原因）。
+ * List canvas summaries, discarding invalid entries.
+ * @returns A successful result with the summaries, or an empty array if the
+ *   response has no array; a failed request returns an error without data.
+ * @throws {TypeError} If the API returns a JSON null response.
  */
 export async function listCanvases(): Promise<ApiResult<CanvasListItem[]>> {
   const r = await api<{ canvases?: unknown, items?: unknown }>('/canvases')
@@ -996,6 +996,8 @@ function oneSummary(v: unknown): CanvasListItem | null {
  * 读一份画布。
  * @param id - 画布 id。
  * @returns 完整画布（失败给原因）。
+ * @throws {URIError} If the id contains an unpaired surrogate.
+ * @throws {TypeError} If the API returns a JSON null response.
  */
 export async function loadCanvas(id: string): Promise<ApiResult<CanvasDoc>> {
   const r = await api<{ canvas?: unknown }>('/canvases/' + encodeURIComponent(id))
@@ -1099,6 +1101,7 @@ export function oneViewport(v: unknown): CanvasViewport {
  * @param title - 标题。
  * @param snap - 可选：一起建出来的初始快照（复制时用）。
  * @returns 建好的画布。
+ * @throws {TypeError} If serialized snapshot fields contain a cycle or BigInt, or the API returns JSON null.
  */
 export async function createCanvas(title: string, snap?: CanvasSnapshot): Promise<ApiResult<CanvasDoc>> {
   const body: Record<string, unknown> = { title }
@@ -1125,6 +1128,8 @@ export async function createCanvas(title: string, snap?: CanvasSnapshot): Promis
  * @param title - 标题。
  * @param snap - 快照。
  * @returns 保存后的画布。
+ * @throws {URIError} If the id contains an unpaired surrogate.
+ * @throws {TypeError} If serialized snapshot fields contain a cycle or BigInt, or the API returns JSON null.
  */
 export async function saveCanvas(id: string, title: string, snap: CanvasSnapshot): Promise<ApiResult<CanvasDoc>> {
   const r = await api<{ canvas?: unknown }>('/canvases/' + encodeURIComponent(id), {
@@ -1142,6 +1147,8 @@ export async function saveCanvas(id: string, title: string, snap: CanvasSnapshot
  * @param id - 画布 id。
  * @param title - 新标题。
  * @returns 结果。
+ * @throws {URIError} If the id contains an unpaired surrogate.
+ * @throws {TypeError} If the API returns a JSON null response.
  */
 export async function renameCanvas(id: string, title: string): Promise<ApiResult<null>> {
   const r = await api<unknown>('/canvases/' + encodeURIComponent(id), {
@@ -1156,6 +1163,8 @@ export async function renameCanvas(id: string, title: string): Promise<ApiResult
  * 删一份画布。
  * @param id - 画布 id。
  * @returns 结果。
+ * @throws {URIError} If the id contains an unpaired surrogate.
+ * @throws {TypeError} If the API returns a JSON null response.
  */
 export async function deleteCanvas(id: string): Promise<ApiResult<null>> {
   const r = await api<unknown>('/canvases/' + encodeURIComponent(id), { method: 'DELETE' })
@@ -1197,7 +1206,7 @@ export async function deleteCanvas(id: string): Promise<ApiResult<null>> {
 const COPY_SUFFIX = '副本'
 
 /**
- * 从一个名字算出一个**没人用过**的副本名。
+ * Choose a copy name by checking the supplied titles.
  *
  * ## 规则
  *
@@ -1217,7 +1226,8 @@ const COPY_SUFFIX = '副本'
  *
  * @param name - 原名（可以是「X 副本 2」这种已经带后缀的，照样往后数）。
  * @param taken - 已经被占用的名字集合。
- * @returns 一个不在 `taken` 里的名字。
+ * @returns The first available name through suffix 999. If all are taken,
+ *   returns a timestamp suffix without checking it against `taken`.
  */
 export function copyNameOf(name: string, taken: ReadonlySet<string>): string {
   /* 去掉已有后缀再往后数：从「X 副本 3」再复制，应得「X 副本」（若空位）
@@ -1240,6 +1250,8 @@ export function copyNameOf(name: string, taken: ReadonlySet<string>): string {
  * @param id - 原件 id。
  * @param takenTitles - 画布库里已用的**标题**集合（标题不是 id，但界面上一模一样会分不清）。
  * @returns 新画布（失败给原因）。
+ * @throws {URIError} If the id contains an unpaired surrogate.
+ * @throws {TypeError} If the API returns a JSON null response.
  */
 export async function duplicateCanvas(
   id: string,
@@ -1394,9 +1406,11 @@ function oneTask(v: unknown): GenTask | null {
 }
 
 /**
- * 列「能做这件事」的模型（跨渠道合并）。
- * @param kind - 生成什么（不传 = 全部）。
- * @returns 模型清单（失败给空数组 + 原因）。
+ * List generation models across channels.
+ * @param kind - Output kind; omit to include all kinds.
+ * @param op - Operation filter sent to the API.
+ * @returns A successful result with the models, or an error without data.
+ * @throws {TypeError} If the API returns a JSON null response.
  */
 export async function listGenModels(kind?: GenKind, op?: GenOp): Promise<ApiResult<GenModelOption[]>> {
   /* ★ `op` 参数（用户 m02814 #61 / 判据 3）：扩图 / 超分在内置清单里**没有工作流**，
@@ -1444,6 +1458,7 @@ function parseGenModels(raw: unknown): GenModelOption[] {
  * 两份数据源迟早漂（这个项目为「同一件事写两份」踩过坑）。
  *
  * @returns 素材清单（失败给原因）。
+ * @throws {TypeError} If the API returns a JSON null response.
  */
 export async function listMaterials(): Promise<ApiResult<{ name: string, url: string }[]>> {
   const r = await api<{ materials?: unknown, items?: unknown }>('/materials')
@@ -1512,6 +1527,7 @@ export type GenOp = 'inpaint' | 'upscale' | 'superResolve' | 'caption' | 'angle'
  * 提交一次生成（**立刻返回**，真正跑的活在后台）。
  * @param input - 见 `SubmitGenInput`。
  * @returns 任务 id + 任务本身。
+ * @throws {TypeError} If serialized input contains a cycle or BigInt, or the API returns JSON null.
  */
 export async function submitGen(input: SubmitGenInput): Promise<ApiResult<{ id: string, task: GenTask | null }>> {
   const body: Record<string, unknown> = {
@@ -1550,6 +1566,8 @@ export async function submitGen(input: SubmitGenInput): Promise<ApiResult<{ id: 
  * 查一次任务状态。
  * @param id - 任务 id。
  * @returns 任务（失败给原因）。
+ * @throws {URIError} If the id contains an unpaired surrogate.
+ * @throws {TypeError} If the API returns a JSON null response.
  */
 export async function getGenTask(id: string): Promise<ApiResult<GenTask>> {
   const r = await api<{ task?: unknown }>('/generate/' + encodeURIComponent(id))
@@ -1562,7 +1580,9 @@ export async function getGenTask(id: string): Promise<ApiResult<GenTask>> {
 /**
  * 取消一个任务。
  * @param id - 任务 id。
- * @returns 结果（404 时 `error` 说清「不存在或已结束」）。
+ * @returns A success result, or an error supplied by the API or derived from the HTTP status.
+ * @throws {URIError} If the id contains an unpaired surrogate.
+ * @throws {TypeError} If the API returns a JSON null response.
  */
 export async function cancelGen(id: string): Promise<ApiResult<null>> {
   const r = await api<unknown>('/generate/' + encodeURIComponent(id) + '/cancel', { method: 'POST' })
@@ -1574,6 +1594,7 @@ export async function cancelGen(id: string): Promise<ApiResult<null>> {
  * @param name - 文件名。
  * @param base64 - 内容（不含 `data:` 前缀）。
  * @returns 存进去的素材名。
+ * @throws {TypeError} If the API returns a JSON null response.
  */
 export async function uploadMaterial(name: string, base64: string): Promise<ApiResult<string>> {
   const r = await api<{ material?: unknown }>('/materials', {
@@ -1605,6 +1626,7 @@ export async function uploadMaterial(name: string, base64: string): Promise<ApiR
  * @param mime - MIME（如 `image/png`）。
  * @param ext - 扩展名（不带点）。给了就用它，不靠 mime 推。
  * @returns 产物 id；失败给原因。
+ * @throws {TypeError} If the API returns a JSON null response.
  */
 export async function uploadArtifact(
   base64: string,
@@ -1626,6 +1648,7 @@ export async function uploadArtifact(
  * 产物 id → 可下载的地址。
  * @param id - 产物 id。
  * @returns 地址（宿主半的二进制路由）。
+ * @throws {URIError} If the id contains an unpaired surrogate.
  */
 export function artifactHref(id: string): string {
   return '/api/ecom-workbench/artifact/' + encodeURIComponent(id)
@@ -1726,6 +1749,7 @@ export function refBytes(ref: unknown): RefRoute | null {
  * @param id - 产物 id。
  * @param mime - MIME（不给按 `image/png` 算）。
  * @returns 那一项；失败给原因。
+ * @throws {URIError} If the id contains an unpaired surrogate.
  */
 export async function artifactBase64(
   id: string,
@@ -1746,6 +1770,7 @@ export async function artifactBase64(
  * 素材名 → 可下载的地址。
  * @param name - 素材名（含扩展名）。
  * @returns 地址（宿主半的二进制路由）。
+ * @throws {URIError} If the name contains an unpaired surrogate.
  */
 export function materialHref(name: string): string {
   return '/api/ecom-workbench/material/' + encodeURIComponent(name)
@@ -1774,6 +1799,7 @@ export function materialHref(name: string): string {
  * @param label - 这次取的是什么（「底图」/「参考图」/「首帧」）。
  * @param mime - MIME（不给按 `image/png` 算）。
  * @returns 那一项；失败给原因（点名是哪一张、试过哪条路）。
+ * @throws {URIError} If a material reference contains an unpaired surrogate.
  */
 export async function refBase64(
   ref: unknown,
@@ -1824,6 +1850,7 @@ export async function refBase64(
  * @param label - 话术里那个词。
  * @param mime - MIME。
  * @returns 字节；失败给原因。
+ * @throws {URIError} If the route key contains an unpaired surrogate.
  */
 async function fetchRef(
   one: RefRoute,
